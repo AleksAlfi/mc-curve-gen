@@ -64,9 +64,8 @@ public record CurvePlan(List<SegmentSpec> segments, SegmentSpec draft, ProfileSp
      * plan when the click is ignored (same block as the path end, or a point limit reached).
      */
     public CurvePlan addPoint(PlanPoint p) {
-        PlanPoint last = lastPoint();
-        PlanPoint end = pathEndPoint();
-        if (same(last, p) || (draft.points().isEmpty() && same(end, p))) return this; // same block clicked twice
+        // Same block clicked twice: compare with the last draft click, or with the path end when the draft is empty.
+        if (same(pathEndPoint(), p)) return this;
         if (totalPoints() >= PlanLimits.MAX_TOTAL_POINTS) return this;
         if (draft.points().size() >= PlanLimits.MAX_POINTS_PER_SEGMENT) return this;
         if (draftComplete()) {

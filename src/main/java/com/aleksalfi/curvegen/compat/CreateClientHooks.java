@@ -36,14 +36,17 @@ public final class CreateClientHooks {
             BlockPos anchor = stack.get(AllDataComponents.SCHEMATIC_ANCHOR);
             if (anchor == null) return;
             boolean itemChanged = !file.equals(appliedFile) || !anchor.equals(appliedAnchor);
-            if (!itemChanged && handler.isDeployed()) return;
             appliedFile = file;
             appliedAnchor = anchor;
-            // deploy() builds the full tool list when the handler still thinks the item is undeployed;
-            // loadSettings() then takes the anchor from the item and deploy() sets up the renderer for it.
+            if (!itemChanged && handler.isDeployed()) return;
+            // After one of Create's own Move/Rotate syncs the item simply catches up with the live
+            // transformation: nothing to do. Only a server-side (re)deploy makes them differ.
+            BlockPos live = handler.getTransformation() == null ? null : handler.getTransformation().getAnchor();
+            if (handler.isDeployed() && anchor.equals(live)) return;
+            // deploy() builds the full tool list and the renderer when the handler still thinks the item is
+            // undeployed; loadSettings() then takes the anchor and deployed flag from the item.
             if (!handler.isDeployed()) handler.deploy();
             handler.loadSettings(stack);
-            handler.deploy();
             return;
         }
     }
