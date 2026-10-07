@@ -16,7 +16,9 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.HitResult;
 
 import java.util.List;
@@ -72,7 +74,7 @@ public class CurvePlannerItem extends Item {
             return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
         }
         if (!level.isClientSide()) {
-            HitResult hit = player.pick(LONG_RANGE, 1.0F, false);
+            HitResult hit = pickLoaded(player, LONG_RANGE);
             if (hit.getType() == HitResult.Type.BLOCK && hit instanceof BlockHitResult bhr) {
                 addPoint(player, stack, pointFor(bhr.getBlockPos(), bhr.getDirection()));
                 return InteractionResultHolder.success(stack);
@@ -83,9 +85,34 @@ public class CurvePlannerItem extends Item {
         return InteractionResultHolder.sidedSuccess(stack, true);
     }
 
+    /**
+     * Ray cast that never forces chunks to load: the range is shortened to the last loaded chunk along the
+     * ray (and to the server view distance) before the vanilla clip runs.
+     */
+    public static HitResult pickLoaded(Player player, double range) {
+        Level level = player.level();
+        if (level instanceof net.minecraft.server.level.ServerLevel server) {
+            range = Math.min(range, server.getServer().getPlayerList().getViewDistance() * 16.0);
+        }
+        Vec3 eye = player.getEyePosition(1.0F);
+        Vec3 dir = player.getViewVector(1.0F);
+        double usable = 0;
+        for (double d = 0; d <= range; d += 4) {
+            Vec3 p = eye.add(dir.scale(d));
+            if (!level.hasChunkAt(BlockPos.containing(p))) break;
+            usable = d;
+        }
+        if (usable <= 0) return BlockHitResult.miss(eye, net.minecraft.core.Direction.UP, BlockPos.containing(eye));
+        return level.clip(new ClipContext(eye, eye.add(dir.scale(usable)), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player));
+    }
+
     private static void addPoint(Player player, ItemStack stack, PlanPoint point) {
         CurvePlan plan = getPlan(stack);
         CurvePlan next = plan.addPoint(point);
+        if (next == plan) {
+            player.displayClientMessage(Component.translatable("curvegen.msg.point_ignored"), true);
+            return;
+        }
         setPlan(stack, next);
         String label = next.draft().nextClickLabel(next.draftIsFirst(), next.hasPreviousTangent());
         Component msg = label == null

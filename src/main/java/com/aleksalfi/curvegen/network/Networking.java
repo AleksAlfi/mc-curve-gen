@@ -28,7 +28,13 @@ public final class Networking {
         Player player = ctx.player();
         ItemStack stack = CurvePlannerItem.held(player);
         if (stack == null) return;
-        CurvePlannerItem.setPlan(stack, PlanLimits.sanitize(payload.plan()));
+        // The screen only edits options: keep the server's segments and draft points so a click that is still
+        // in flight is never overwritten by the screen's older copy of the plan.
+        CurvePlan incoming = PlanLimits.sanitize(payload.plan());
+        CurvePlan current = CurvePlannerItem.getPlan(stack);
+        CurvePlan merged = current.withProfile(incoming.profile()).withSchematicName(incoming.schematicName())
+                .withDraftOptions(incoming.draft());
+        CurvePlannerItem.setPlan(stack, PlanLimits.sanitize(merged));
     }
 
     private static void handleAction(PlannerActionPayload payload, IPayloadContext ctx) {
@@ -68,6 +74,7 @@ public final class Networking {
         WorldPlacer.Report report = WorldPlacer.place(player.serverLevel(), blocks, player, player.getUUID());
         player.displayClientMessage(Component.translatable("curvegen.msg.placed", report.placed(), report.skippedUnloaded()), false);
         if (report.itemsReturned() > 0) player.displayClientMessage(returnedMessage(player, report.itemsReturned()), false);
+        if (report.containersReplaced() > 0) player.displayClientMessage(Component.translatable("curvegen.msg.containers", report.containersReplaced()), false);
         for (String w : blocks.warnings()) player.displayClientMessage(Component.literal("§e" + w), false);
     }
 

@@ -19,6 +19,10 @@ public final class PolylineIndex {
         /** Unit direction of travel of the hit segment. */
         public double tx, tz;
         public boolean beyondStart, beyondEnd;
+        /** True when the point projects past an interior vertex (a corner join). */
+        public boolean pastInterior;
+        /** Distance along the path from the start, and remaining to the end, of the projected point. */
+        public double along, toEnd;
 
         public boolean found() { return segment >= 0; }
     }
@@ -95,8 +99,11 @@ public final class PolylineIndex {
             hit.beyondEnd = i == line.size - 2 && (hit.u - 1) * len > END_EXTENSION;
             // Past an interior vertex the projection onto one segment's normal is not the real distance;
             // use the distance to the vertex so sharp corners get a round join instead of a bump.
-            boolean pastInterior = (hit.u < 0 && i > 0) || (hit.u > 1 && i < line.size - 2);
-            if (pastInterior) hit.lateral = Math.copySign(hit.distance, hit.lateral);
+            hit.pastInterior = (hit.u < 0 && i > 0) || (hit.u > 1 && i < line.size - 2);
+            if (hit.pastInterior) hit.lateral = Math.copySign(hit.distance, hit.lateral);
+            double uc = Math.max(0, Math.min(1, hit.u));
+            hit.along = line.s[i] + uc * len;
+            hit.toEnd = line.totalLength() - hit.along;
         }
         return hit;
     }

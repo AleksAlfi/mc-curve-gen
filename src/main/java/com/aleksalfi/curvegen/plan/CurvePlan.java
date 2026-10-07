@@ -40,10 +40,35 @@ public record CurvePlan(List<SegmentSpec> segments, SegmentSpec draft, ProfileSp
         return null;
     }
 
-    /** Adds a clicked point; finalizes the draft into a segment when it has enough points. */
+    /** Where the path currently ends: the last draft point, else the end point of the last segment. */
+    public PlanPoint pathEndPoint() {
+        if (!draft.points().isEmpty()) return draft.points().get(draft.points().size() - 1);
+        for (int i = segments.size() - 1; i >= 0; i--) {
+            List<PlanPoint> pts = segments.get(i).points();
+            if (pts.isEmpty()) continue;
+            if (segments.get(i).type() == SegmentType.SPLINE) return pts.get(pts.size() - 1);
+            int endIndex = i == 0 ? 1 : 0; // after the (optional) start click comes the end point
+            return pts.get(Math.min(endIndex, pts.size() - 1));
+        }
+        return null;
+    }
+
+    public int totalPoints() {
+        int n = draft.points().size();
+        for (SegmentSpec s : segments) n += s.points().size();
+        return n;
+    }
+
+    /**
+     * Adds a clicked point; finalizes the draft into a segment when it has enough points. Returns the same
+     * plan when the click is ignored (same block as the path end, or a point limit reached).
+     */
     public CurvePlan addPoint(PlanPoint p) {
         PlanPoint last = lastPoint();
-        if (last != null && Math.abs(last.x() - p.x()) < 1e-6 && Math.abs(last.z() - p.z()) < 1e-6) return this; // same block clicked twice
+        PlanPoint end = pathEndPoint();
+        if (same(last, p) || (draft.points().isEmpty() && same(end, p))) return this; // same block clicked twice
+        if (totalPoints() >= PlanLimits.MAX_TOTAL_POINTS) return this;
+        if (draft.points().size() >= PlanLimits.MAX_POINTS_PER_SEGMENT) return this;
         if (draftComplete()) {
             // The draft was completed by an option change; this click starts the next segment.
             CurvePlan finished = finalizeDraft(draftRequiredPoints());
@@ -53,6 +78,10 @@ public record CurvePlan(List<SegmentSpec> segments, SegmentSpec draft, ProfileSp
         int req = d.requiredPoints(draftIsFirst(), hasPreviousTangent());
         if (req != SegmentSpec.OPEN_ENDED && d.points().size() >= req) return withDraft(d).finalizeDraft(req);
         return withDraft(d);
+    }
+
+    private static boolean same(PlanPoint a, PlanPoint b) {
+        return a != null && b != null && Math.abs(a.x() - b.x()) < 1e-6 && Math.abs(a.z() - b.z()) < 1e-6;
     }
 
     /** Moves the draft (trimmed to {@code keep} points) into the segment list. */

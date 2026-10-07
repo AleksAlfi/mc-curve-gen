@@ -169,6 +169,8 @@ public class CurveGenGameTests {
             Path dir = Files.createTempDirectory("curvegen-test");
             Path file = SchematicWriter.write(blocks, dir, "road", true);
             CompoundTag nbt = NbtIo.readCompressed(file, NbtAccounter.unlimitedHeap());
+            Files.deleteIfExists(file);
+            Files.deleteIfExists(dir);
             StructureTemplate template = new StructureTemplate();
             template.load(helper.getLevel().holderLookup(Registries.BLOCK), nbt);
             net.minecraft.core.Vec3i size = template.getSize();
@@ -191,6 +193,8 @@ public class CurveGenGameTests {
             CurvePlan back = PlanCodecs.PLAN.parse(JsonOps.INSTANCE, json).getOrThrow();
             if (!back.equals(plan)) helper.fail("plan codec round trip mismatch");
             helper.succeed();
+        } catch (net.minecraft.gametest.framework.GameTestAssertException e) {
+            throw e;
         } catch (Exception e) {
             helper.fail(e.toString());
         }

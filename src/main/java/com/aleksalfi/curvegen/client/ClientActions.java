@@ -10,6 +10,7 @@ import com.aleksalfi.curvegen.item.CurvePlannerItem;
 import com.aleksalfi.curvegen.network.PlannerActionPayload;
 import com.aleksalfi.curvegen.network.UpdatePlanPayload;
 import com.aleksalfi.curvegen.plan.CurvePlan;
+import com.aleksalfi.curvegen.plan.PlanLimits;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.ClickEvent;
@@ -28,9 +29,10 @@ public final class ClientActions {
     public static void syncPlan(CurvePlan plan) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
+        CurvePlan clean = PlanLimits.sanitize(plan);
         ItemStack stack = CurvePlannerItem.held(mc.player);
-        if (stack != null) CurvePlannerItem.setPlan(stack, plan);
-        PacketDistributor.sendToServer(new UpdatePlanPayload(plan));
+        if (stack != null) CurvePlannerItem.setPlan(stack, clean);
+        PacketDistributor.sendToServer(new UpdatePlanPayload(clean));
     }
 
     public static void send(PlannerActionPayload.Action action) {
@@ -47,6 +49,10 @@ public final class ClientActions {
         Path dir = CreateCompat.schematicsDir();
         try {
             Path file = SchematicWriter.write(blocks, dir, plan.schematicName(), overwrite);
+            long size = java.nio.file.Files.size(file);
+            if (size > 256 * 1024 && mc.player != null) {
+                mc.player.displayClientMessage(Component.translatable("curvegen.msg.export_large", size / 1024).withStyle(ChatFormatting.GOLD), false);
+            }
             Component link = Component.literal(file.getFileName().toString()).withStyle(s -> s.withUnderlined(true)
                     .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE, dir.toAbsolutePath().toString())));
             Component msg = Component.translatable("curvegen.msg.exported", link, blocks.size(), blocks.min().toShortString());

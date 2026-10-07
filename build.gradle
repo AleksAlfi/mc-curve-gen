@@ -124,6 +124,11 @@ tasks.register('downloadRuntimeMods') {
     }
 }
 
+// The dev runs need Create and Copycats+ in their mods folders.
+['runClient', 'runServer', 'runGameTestServer'].each { name ->
+    tasks.matching { it.name == name }.configureEach { dependsOn 'downloadRuntimeMods' }
+}
+
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }

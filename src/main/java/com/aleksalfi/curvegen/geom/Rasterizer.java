@@ -41,10 +41,6 @@ public final class Rasterizer {
         // Candidate columns: squares around every polyline vertex (vertices are at most ~0.5 apart), so a long
         // diagonal road does not cost its whole bounding box.
         int reach = (int) Math.ceil(margin) + 1;
-        long estimate = (long) line.size * (2L * reach + 1) * (2L * reach + 1);
-        if (estimate > maxColumns * 4 && boundingColumns(line, margin) > maxColumns) {
-            throw new PlanTooLargeException(boundingColumns(line, margin), maxColumns);
-        }
         LongSet candidates = new LongSet();
         for (int i = 0; i < line.size; i++) {
             int vx = (int) Math.floor(line.x[i]), vz = (int) Math.floor(line.z[i]);
@@ -56,7 +52,10 @@ public final class Rasterizer {
         long[] keys = candidates.toSortedArray();
         int n = Math.max(1, supersample);
         double inv = 1.0 / n;
-        double centerReach = half + Math.sqrt(0.5) + 1e-6;
+        // Columns whose centre is further than this from the path cannot be touched (end caps included).
+        double centerReach = Math.sqrt(half * half + PolylineIndex.END_EXTENSION * PolylineIndex.END_EXTENSION) + Math.sqrt(0.5) + 1e-6;
+        // Half the diagonal of a column: a column centre at least this far inside a region is fully inside it.
+        double inset = Math.sqrt(0.5) + 1e-6;
 
         for (long key : keys) {
             int bx = (int) (key >> 32), bz = (int) key;
@@ -64,6 +63,20 @@ public final class Rasterizer {
                 double cx = bx + 0.5, cz = bz + 0.5;
                 PolylineIndex.Hit center = index.nearest(cx, cz, margin);
                 if (!center.found() || center.distance > centerReach) continue;
+
+                // Fast path: clearly inside one lane, away from the ends and from corner joins -> no supersampling.
+                if (!center.pastInterior && Math.abs(center.lateral) + inset < half
+                        && center.along > PolylineIndex.END_EXTENSION + inset && center.toEnd > PolylineIndex.END_EXTENSION + inset
+                        && laneBoundaryDistance(center.lateral, laneWidths, half) > inset) {
+                    int lane = laneFor(center.lateral, laneWidths, half);
+                    if (lane >= 0) {
+                        double[] laneCov = new double[laneWidths.length];
+                        laneCov[lane] = 1;
+                        double sign = center.lateral >= 0 ? 1 : -1;
+                        out.add(new Column(bx, bz, 1, lane, center.height, sign * center.tz, sign * -center.tx, laneCov));
+                        continue;
+                    }
+                }
 
                 int inside = 0;
                 double[] laneCount = new double[laneWidths.length];
@@ -95,6 +108,17 @@ public final class Rasterizer {
             }
         }
         return out;
+    }
+
+    /** Distance from a lateral offset to the nearest lane boundary (including the road edges). */
+    static double laneBoundaryDistance(double d, double[] widths, double half) {
+        double best = Math.min(Math.abs(half - d), Math.abs(-half - d));
+        double upper = half;
+        for (double w : widths) {
+            upper -= w;
+            best = Math.min(best, Math.abs(upper - d));
+        }
+        return best;
     }
 
     static long boundingColumns(Polyline line, double margin) {

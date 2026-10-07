@@ -22,7 +22,7 @@ public final class PlanCodecs {
                 e -> e.name().toLowerCase(Locale.ROOT));
     }
 
-    public static final Codec<SegmentType> SEGMENT_TYPE = simpleEnum(SegmentType.values(), SegmentType.ARC);
+    public static final Codec<SegmentType> SEGMENT_TYPE = simpleEnum(SegmentType.values(), SegmentType.SPLINE);
     public static final Codec<ArcMode> ARC_MODE = simpleEnum(ArcMode.values(), ArcMode.TANGENT);
     public static final Codec<BezierKind> BEZIER_KIND = simpleEnum(BezierKind.values(), BezierKind.CUBIC);
     public static final Codec<SBendStyle> SBEND_STYLE = simpleEnum(SBendStyle.values(), SBendStyle.SMOOTH);
@@ -30,9 +30,9 @@ public final class PlanCodecs {
     public static final Codec<ElevationMode> ELEVATION = simpleEnum(ElevationMode.values(), ElevationMode.LINEAR);
 
     public static final Codec<PlanPoint> POINT = RecordCodecBuilder.create(i -> i.group(
-            Codec.DOUBLE.fieldOf("x").forGetter(PlanPoint::x),
-            Codec.DOUBLE.fieldOf("y").forGetter(PlanPoint::y),
-            Codec.DOUBLE.fieldOf("z").forGetter(PlanPoint::z)
+            Codec.DOUBLE.optionalFieldOf("x", 0.0).forGetter(PlanPoint::x),
+            Codec.DOUBLE.optionalFieldOf("y", 0.0).forGetter(PlanPoint::y),
+            Codec.DOUBLE.optionalFieldOf("z", 0.0).forGetter(PlanPoint::z)
     ).apply(i, PlanPoint::new));
 
     public static final Codec<SegmentSpec> SEGMENT = RecordCodecBuilder.create(i -> i.group(
@@ -50,13 +50,13 @@ public final class PlanCodecs {
     ).apply(i, SegmentSpec::new));
 
     public static final Codec<LaneSpec> LANE = RecordCodecBuilder.create(i -> i.group(
-            Codec.DOUBLE.fieldOf("width").forGetter(LaneSpec::width),
-            Codec.STRING.fieldOf("block").forGetter(LaneSpec::block),
+            Codec.DOUBLE.optionalFieldOf("width", 1.0).forGetter(LaneSpec::width),
+            Codec.STRING.optionalFieldOf("block", "minecraft:stone").forGetter(LaneSpec::block),
             Codec.STRING.optionalFieldOf("material", "").forGetter(LaneSpec::material)
     ).apply(i, LaneSpec::new));
 
     public static final Codec<ProfileSpec> PROFILE = RecordCodecBuilder.create(i -> i.group(
-            LANE.listOf().fieldOf("lanes").forGetter(ProfileSpec::lanes),
+            LANE.listOf().optionalFieldOf("lanes", ProfileSpec.defaults().lanes()).forGetter(ProfileSpec::lanes),
             Codec.INT.optionalFieldOf("thickness", 1).forGetter(ProfileSpec::thickness),
             Codec.STRING.optionalFieldOf("base_block", "").forGetter(ProfileSpec::baseBlock),
             Codec.DOUBLE.optionalFieldOf("y_offset", 0.0).forGetter(ProfileSpec::yOffset),
@@ -73,5 +73,7 @@ public final class PlanCodecs {
             Codec.STRING.optionalFieldOf("schematic_name", "curve").forGetter(CurvePlan::schematicName)
     ).apply(i, CurvePlan::new));
 
-    public static final StreamCodec<ByteBuf, CurvePlan> PLAN_STREAM = ByteBufCodecs.fromCodec(PLAN);
+    /** Network budget for a plan: {@link PlanLimits#MAX_TOTAL_POINTS} points fit comfortably in 1 MB of NBT. */
+    public static final StreamCodec<ByteBuf, CurvePlan> PLAN_STREAM =
+            ByteBufCodecs.fromCodec(PLAN, () -> net.minecraft.nbt.NbtAccounter.create(1_048_576L));
 }

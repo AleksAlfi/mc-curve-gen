@@ -32,8 +32,9 @@ used for lanes and as copycat material.
      Schematic Table looks). Write it onto an empty schematic at a Schematic Table; as soon as you
      hold the written schematic it is **deployed at the correct world position automatically**, so you
      can put it straight into a Schematicannon. (`Deploy held schematic` does the same manually.)
-   * **Place blocks** places everything directly (creative or permission level 2). **Undo placement**
-     restores what was there before.
+   * **Place** places everything directly (creative or permission level 2). **Undo place** restores what
+     was there before; containers that were paved over come back with their contents, and the materials of
+     the road's own copycat layers go to a survival player's inventory (discarded in creative).
 
 ### Segments
 
@@ -42,7 +43,7 @@ Every segment starts where the previous one ended, so a whole road is one contin
 | Type | Clicks after the end point | Options |
 |------|----------------------------|---------|
 | Straight | – | – |
-| Arc – Tangent | – (uses the previous segment's direction) | heading for the first segment |
+| Arc – Tangent | – when it continues a previous segment, a cardinal heading is set, or *Align start* is on; otherwise one point on the arc | heading for the first segment |
 | Arc – Through point | one point on the arc | – |
 | Arc – Fixed radius | – | radius, turn left/right |
 | Bezier | 1 (quadratic) or 2 (cubic) control points; with *smooth join* the first control is automatic | kind |
@@ -71,7 +72,10 @@ every point (tangent-continuous), with heights interpolated point to point.
 * **Quality** controls the supersampling used to measure coverage.
 
 Blocks that Create would refuse as copycat material (stairs, block entities, non-full blocks) fall
-back to full blocks for that lane; the screen tells you.
+back to full blocks for that lane; a warning shows on the HUD and in the status line of the screen.
+
+Limits: 256 segments, 4096 points in total, 32 lanes up to 64 wide (256 in total), thickness 32,
+paths up to 100 000 blocks long, 1 000 000 blocks per plan (direct placement stops at 250 000).
 
 ### Commands
 
@@ -111,9 +115,8 @@ schematic only once.
 ## Building
 
 ```
-./gradlew build            # jar in build/libs
-./gradlew runClient        # dev client; Create + Copycats+ are downloaded into run/mods first
-./gradlew test             # geometry unit tests
+./gradlew build              # jar in build/libs (also runs the unit tests)
+./gradlew runClient          # dev client; downloads Create + Copycats+ into run/mods first
 ./gradlew runGameTestServer  # in-game tests with Create and Copycats+ loaded
 ```
 

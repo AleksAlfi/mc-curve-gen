@@ -4,7 +4,6 @@ import com.aleksalfi.curvegen.CurveGen;
 import com.aleksalfi.curvegen.build.CopycatSupport;
 import com.aleksalfi.curvegen.build.PlanCompiler;
 import com.aleksalfi.curvegen.plan.CurvePlan;
-import com.mojang.blaze3d.vertex.Tesselator;
 import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
@@ -51,12 +50,13 @@ public final class PreviewManager {
                 int layers = 0;
                 boolean copycats = CopycatSupport.available();
                 for (var b : r.blocks().blocks().values()) if (copycats && CopycatSupport.isLayer(b.state())) layers++;
-                stats = new Stats(r.blocks().size(), layers, r.blocks().warnings());
+                List<String> warnings = new java.util.ArrayList<>(r.blocks().warnings());
+                if (r.blocks().size() > PreviewMesh.MAX_BLOCKS) warnings.add("Preview shows only the first " + PreviewMesh.MAX_BLOCKS + " blocks.");
+                stats = new Stats(r.blocks().size(), layers, List.copyOf(warnings));
             } catch (RuntimeException e) {
                 CurveGen.LOGGER.error("Preview compile failed", e);
                 if (mesh != null) { mesh.close(); mesh = null; }
                 result = null;
-                Tesselator.getInstance().clear();
                 stats = new Stats(0, 0, List.of("Preview failed: " + e.getMessage()));
             }
             pending = null;
@@ -68,6 +68,9 @@ public final class PreviewManager {
     }
 
     public static void clear() {
+        if (pending != null) pending.cancel(true);
+        pending = null;
+        pendingPlan = null;
         resultPlan = null;
         result = null;
         if (mesh != null) { mesh.close(); mesh = null; }

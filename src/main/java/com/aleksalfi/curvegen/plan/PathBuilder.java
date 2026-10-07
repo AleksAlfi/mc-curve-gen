@@ -56,8 +56,13 @@ public final class PathBuilder {
                     case TANGENT -> {
                         if (spec.effectiveTangentAvailable(hasPrev)) {
                             arc = sane(Arc2.fromTangent(start, heading, end), chord);
-                            // A target behind the start would need almost a full circle: use a smooth curve instead.
-                            if (arc == null) arc = hermite(start, heading, end, end.sub(start).normalize()).get(0);
+                            // A target behind the start would need almost a full circle: use a smooth curve instead,
+                            // ending opposite to the heading (a proper hairpin) when the target lies behind.
+                            if (arc == null) {
+                                Vec2 chordDir = end.sub(start).normalize();
+                                Vec2 te = chordDir.dot(heading) < 0 ? heading.scale(-1) : chordDir;
+                                arc = hermite(start, heading, end, te).get(0);
+                            }
                         } else if (extra1 != null) {
                             arc = sane(Arc2.throughPoints(start, extra1, end), chord);
                         }
@@ -228,7 +233,8 @@ public final class PathBuilder {
             if (seg == null) {
                 // Degenerate (e.g. zero length) segment: still establish the path start so later segments survive.
                 if (first && !spec.points().isEmpty()) {
-                    PlanPoint p = spec.points().get(spec.points().size() - 1);
+                    // The end point is the second click of a first segment (start, end, controls...).
+                    PlanPoint p = spec.points().get(Math.min(1, spec.points().size() - 1));
                     pos = p.xz();
                     y = p.y();
                 }

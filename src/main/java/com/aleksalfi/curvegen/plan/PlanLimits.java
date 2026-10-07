@@ -9,6 +9,12 @@ public final class PlanLimits {
 
     public static final int MAX_SEGMENTS = 256;
     public static final int MAX_POINTS_PER_SEGMENT = 512;
+    /** Points across the whole plan; keeps the item's data component well under the network NBT budget. */
+    public static final int MAX_TOTAL_POINTS = 4096;
+    /** Longest path (blocks) that is sampled and rasterized. */
+    public static final double MAX_PATH_LENGTH = 100_000;
+    /** Largest number of blocks a compile will assemble. */
+    public static final int MAX_PLAN_BLOCKS = 1_000_000;
     public static final int MAX_LANES = 32;
     public static final double MAX_LANE_WIDTH = 64;
     public static final double MAX_TOTAL_WIDTH = 256;
@@ -29,12 +35,16 @@ public final class PlanLimits {
     /** Clamps every numeric field and truncates over-long lists. */
     public static CurvePlan sanitize(CurvePlan plan) {
         List<SegmentSpec> segments = new ArrayList<>();
+        int points = 0;
         for (SegmentSpec s : plan.segments()) {
             if (segments.size() >= MAX_SEGMENTS) break;
             if (s.points().isEmpty()) continue;
-            segments.add(sanitize(s));
+            SegmentSpec clean = sanitize(s, MAX_TOTAL_POINTS - points);
+            if (clean.points().isEmpty()) break;
+            points += clean.points().size();
+            segments.add(clean);
         }
-        SegmentSpec draft = sanitize(plan.draft());
+        SegmentSpec draft = sanitize(plan.draft(), MAX_TOTAL_POINTS - points);
         ProfileSpec p = plan.profile();
         List<LaneSpec> lanes = new ArrayList<>();
         double total = 0;
@@ -55,10 +65,10 @@ public final class PlanLimits {
         return new CurvePlan(List.copyOf(segments), draft, profile, clip(plan.schematicName(), MAX_NAME_LENGTH));
     }
 
-    static SegmentSpec sanitize(SegmentSpec s) {
+    static SegmentSpec sanitize(SegmentSpec s, int budget) {
         List<PlanPoint> pts = new ArrayList<>();
         for (PlanPoint p : s.points()) {
-            if (pts.size() >= MAX_POINTS_PER_SEGMENT) break;
+            if (pts.size() >= MAX_POINTS_PER_SEGMENT || pts.size() >= budget) break;
             pts.add(new PlanPoint(finite(p.x(), 0, -MAX_COORD, MAX_COORD), finite(p.y(), 0, -MAX_Y, MAX_Y), finite(p.z(), 0, -MAX_COORD, MAX_COORD)));
         }
         return s.withPoints(pts).withRadius(finite(s.radius(), 12, 0.5, MAX_RADIUS));

@@ -11,11 +11,16 @@ import net.minecraft.world.item.ItemStack;
 
 /**
  * Client side: Create's schematic handler only re-reads a held schematic when the file name changes, so
- * when the server deploys the item while it is already in hand we tell the handler about it.
+ * when the server deploys the item while it is already in hand we tell the handler about it. The hook acts
+ * only when the item's own components change (never because Create's live transformation differs from the
+ * item, which happens legitimately while the player moves the schematic with Create's tools).
  * Only loaded when Create is present.
  */
 public final class CreateClientHooks {
     private CreateClientHooks() {}
+
+    private static String appliedFile;
+    private static BlockPos appliedAnchor;
 
     public static void refresh() {
         Minecraft mc = Minecraft.getInstance();
@@ -27,10 +32,16 @@ public final class CreateClientHooks {
             if (!stack.has(AllDataComponents.SCHEMATIC_FILE)) continue;
             if (!Boolean.TRUE.equals(stack.get(ModRegistry.AUTO_DEPLOYED.get()))) return;
             if (!Boolean.TRUE.equals(stack.get(AllDataComponents.SCHEMATIC_DEPLOYED))) return;
+            String file = stack.get(AllDataComponents.SCHEMATIC_FILE);
             BlockPos anchor = stack.get(AllDataComponents.SCHEMATIC_ANCHOR);
-            boolean stale = !handler.isDeployed()
-                    || (anchor != null && handler.getTransformation() != null && !anchor.equals(handler.getTransformation().getAnchor()));
-            if (!stale) return;
+            if (anchor == null) return;
+            boolean itemChanged = !file.equals(appliedFile) || !anchor.equals(appliedAnchor);
+            if (!itemChanged && handler.isDeployed()) return;
+            appliedFile = file;
+            appliedAnchor = anchor;
+            // deploy() builds the full tool list when the handler still thinks the item is undeployed;
+            // loadSettings() then takes the anchor from the item and deploy() sets up the renderer for it.
+            if (!handler.isDeployed()) handler.deploy();
             handler.loadSettings(stack);
             handler.deploy();
             return;

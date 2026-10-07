@@ -33,6 +33,11 @@
   "curvegen.cmd.segment_removed": "Removed the last segment.",
   "curvegen.cmd.cleared": "Cleared the path.",
   "curvegen.cmd.finished": "Finished the current segment.",
+  "curvegen.cmd.nothing_changed": "Nothing to change.",
+  "curvegen.cmd.out_of_world": "That position is outside the world.",
+  "curvegen.msg.point_ignored": "Point ignored: same block as the path end, or the point limit was reached.",
+  "curvegen.msg.containers": "%s containers with items were paved over; their contents come back with 'Undo placement'.",
+  "curvegen.msg.export_large": "The schematic is %s KB. Create's upload limit defaults to 256 KB; raise it in Create's server config or split the road.",
 
   "curvegen.hud.title": "Curve Planner",
   "curvegen.hud.segment": "Segment: %s",
@@ -64,6 +69,7 @@
   "curvegen.gui.undo_point": "Undo point",
   "curvegen.gui.remove_segment": "Remove segm.",
   "curvegen.gui.clear": "Clear path",
+  "curvegen.gui.clear_short": "Clear",
   "curvegen.gui.width": "Width",
   "curvegen.gui.block": "Block",
   "curvegen.gui.material": "Layer material",
@@ -96,6 +102,8 @@
   "curvegen.gui.picker.compatible_only": "Copycat-compatible only",
   "curvegen.gui.picker.invalid": "Not a valid block state",
   "curvegen.gui.picker.cancel": "Cancel",
+  "curvegen.gui.picker.clear": "Use none",
+  "curvegen.gui.picker.incompatible": "Not usable as copycat material",
 
   "curvegen.enum.segment.straight": "Straight",
   "curvegen.enum.segment.arc": "Arc",

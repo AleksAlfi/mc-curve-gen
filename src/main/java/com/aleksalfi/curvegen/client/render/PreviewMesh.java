@@ -6,17 +6,22 @@ import com.aleksalfi.curvegen.geom.Polyline;
 import com.aleksalfi.curvegen.plan.CurvePlan;
 import com.aleksalfi.curvegen.plan.PlanPoint;
 import com.aleksalfi.curvegen.plan.SegmentSpec;
+import com.aleksalfi.curvegen.build.CopycatSupport;
 import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.MeshData;
-import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexBuffer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.level.EmptyBlockGetter;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
+
+import java.util.Map;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -34,10 +39,19 @@ public final class PreviewMesh implements AutoCloseable {
         this.lines = lines;
     }
 
+    /** Blocks beyond this are not drawn (the plan itself is still complete); keeps GPU memory bounded. */
+    public static final int MAX_BLOCKS = 300_000;
+
     public static PreviewMesh build(PlanCompiler.Result result, CurvePlan plan) {
         BlockPos origin = result.blocks().isEmpty() ? firstPointPos(plan) : result.blocks().min();
         VertexBuffer quads = buildQuads(result, origin);
-        VertexBuffer lines = buildLines(result, plan, origin);
+        VertexBuffer lines;
+        try {
+            lines = buildLines(result, plan, origin);
+        } catch (RuntimeException e) {
+            if (quads != null) quads.close();
+            throw e;
+        }
         return new PreviewMesh(origin, quads, lines);
     }
 
@@ -48,22 +62,50 @@ public final class PreviewMesh implements AutoCloseable {
 
     @Nullable
     private static VertexBuffer buildQuads(PlanCompiler.Result result, BlockPos origin) {
-        if (result.blocks().isEmpty()) return null;
-        BufferBuilder bb = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        result.blocks().blocks().forEach((pos, block) -> {
-            int rgb = colorOf(block);
-            float r = ((rgb >> 16) & 0xFF) / 255f, g = ((rgb >> 8) & 0xFF) / 255f, b = (rgb & 0xFF) / 255f;
-            float ox = pos.getX() - origin.getX(), oy = pos.getY() - origin.getY(), oz = pos.getZ() - origin.getZ();
-            VoxelShape shape = shapeOf(block.state());
-            shape.forAllBoxes((x0, y0, z0, x1, y1, z1) -> box(bb, ox + (float) x0, oy + (float) y0, oz + (float) z0,
-                    ox + (float) x1, oy + (float) y1, oz + (float) z1, r, g, b, 0.62f));
-        });
-        return upload(bb.build());
+        Map<BlockPos, PlannedBlock> blocks = result.blocks().blocks();
+        if (blocks.isEmpty()) return null;
+        int budget = Math.min(blocks.size(), MAX_BLOCKS);
+        // Private buffer (not the shared Tesselator) so a failure or a huge mesh never pollutes other rendering.
+        try (ByteBufferBuilder memory = new ByteBufferBuilder(Math.max(1 << 16, budget * 6 * 4 * 16))) {
+            BufferBuilder bb = new BufferBuilder(memory, VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+            int n = 0;
+            BlockPos.MutableBlockPos neighbour = new BlockPos.MutableBlockPos();
+            for (Map.Entry<BlockPos, PlannedBlock> e : blocks.entrySet()) {
+                if (n++ >= budget) break;
+                BlockPos pos = e.getKey();
+                PlannedBlock block = e.getValue();
+                int rgb = colorOf(block);
+                float r = ((rgb >> 16) & 0xFF) / 255f, g = ((rgb >> 8) & 0xFF) / 255f, b = (rgb & 0xFF) / 255f;
+                float ox = pos.getX() - origin.getX(), oy = pos.getY() - origin.getY(), oz = pos.getZ() - origin.getZ();
+                boolean fullCube = isFullCube(block.state());
+                // Faces shared with a neighbouring full block of the plan are invisible: skip them.
+                boolean[] faces = new boolean[6];
+                for (Direction dir : Direction.values()) {
+                    neighbour.setWithOffset(pos, dir);
+                    PlannedBlock other = blocks.get(neighbour);
+                    faces[dir.ordinal()] = !(fullCube && other != null && isFullCube(other.state()));
+                }
+                VoxelShape shape = fullCube ? Shapes.block() : shapeOf(block.state());
+                shape.forAllBoxes((x0, y0, z0, x1, y1, z1) -> box(bb, ox + (float) x0, oy + (float) y0, oz + (float) z0,
+                        ox + (float) x1, oy + (float) y1, oz + (float) z1, r, g, b, 0.62f, faces));
+            }
+            return upload(bb.build());
+        }
+    }
+
+    private static boolean isFullCube(BlockState state) {
+        if (CopycatSupport.available() && CopycatSupport.isLayer(state)) return false;
+        try {
+            return state.isCollisionShapeFullBlock(EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
+        } catch (RuntimeException e) {
+            return true;
+        }
     }
 
     @Nullable
     private static VertexBuffer buildLines(PlanCompiler.Result result, CurvePlan plan, BlockPos origin) {
-        BufferBuilder bb = Tesselator.getInstance().begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
+        try (ByteBufferBuilder memory = new ByteBufferBuilder(1 << 18)) {
+        BufferBuilder bb = new BufferBuilder(memory, VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
         boolean any = false;
         Polyline line = result.centerline();
         for (int i = 0; i + 1 < line.size; i++) {
@@ -80,6 +122,7 @@ public final class PreviewMesh implements AutoCloseable {
             return null;
         }
         return upload(data);
+        }
     }
 
     private static boolean markers(BufferBuilder bb, SegmentSpec seg, BlockPos origin, boolean draft, boolean first) {
@@ -129,20 +172,17 @@ public final class PreviewMesh implements AutoCloseable {
         return vb;
     }
 
-    private static void box(BufferBuilder bb, float x0, float y0, float z0, float x1, float y1, float z1, float r, float g, float b, float a) {
+    /** @param faces which faces to emit, indexed by {@link Direction#ordinal()} (down, up, north, south, west, east) */
+    private static void box(BufferBuilder bb, float x0, float y0, float z0, float x1, float y1, float z1, float r, float g, float b, float a, boolean[] faces) {
         // Slight outset so faces that coincide with existing terrain (blocks being replaced) stay visible.
         float e = 0.004f;
         x0 -= e; y0 -= e; z0 -= e; x1 += e; y1 += e; z1 += e;
-        // top (brightest)
-        quad(bb, x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0, r, g, b, a, 1f);
-        // bottom
-        quad(bb, x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1, r, g, b, a, 0.5f);
-        // north (z0) / south (z1)
-        quad(bb, x0, y0, z0, x0, y1, z0, x1, y1, z0, x1, y0, z0, r, g, b, a, 0.8f);
-        quad(bb, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1, r, g, b, a, 0.8f);
-        // west (x0) / east (x1)
-        quad(bb, x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0, r, g, b, a, 0.6f);
-        quad(bb, x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1, r, g, b, a, 0.6f);
+        if (faces[1]) quad(bb, x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0, r, g, b, a, 1f);      // top (brightest)
+        if (faces[0]) quad(bb, x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1, r, g, b, a, 0.5f);    // bottom
+        if (faces[2]) quad(bb, x0, y0, z0, x0, y1, z0, x1, y1, z0, x1, y0, z0, r, g, b, a, 0.8f);    // north
+        if (faces[3]) quad(bb, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1, r, g, b, a, 0.8f);    // south
+        if (faces[4]) quad(bb, x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0, r, g, b, a, 0.6f);    // west
+        if (faces[5]) quad(bb, x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1, r, g, b, a, 0.6f);    // east
     }
 
     private static void quad(BufferBuilder bb, float ax, float ay, float az, float bx, float by, float bz,

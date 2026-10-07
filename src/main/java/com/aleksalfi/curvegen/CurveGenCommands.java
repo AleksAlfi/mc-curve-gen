@@ -48,7 +48,7 @@ public final class CurveGenCommands {
                 .then(enumCommand("bezier", BezierKind.values(), (ctx, v) -> option(ctx, seg -> seg.withBezierKind((BezierKind) v))))
                 .then(enumCommand("sbend", SBendStyle.values(), (ctx, v) -> option(ctx, seg -> seg.withSBendStyle((SBendStyle) v))))
                 .then(enumCommand("heading", Heading.values(), (ctx, v) -> option(ctx, seg -> seg.withHeading((Heading) v))))
-                .then(Commands.literal("radius").then(Commands.argument("value", DoubleArgumentType.doubleArg(0.5))
+                .then(Commands.literal("radius").then(Commands.argument("value", DoubleArgumentType.doubleArg(0.5, com.aleksalfi.curvegen.plan.PlanLimits.MAX_RADIUS))
                         .executes(ctx -> option(ctx, seg -> seg.withRadius(DoubleArgumentType.getDouble(ctx, "value"))))))
                 .then(Commands.literal("turnleft").then(Commands.argument("value", BoolArgumentType.bool())
                         .executes(ctx -> option(ctx, seg -> seg.withTurnLeft(BoolArgumentType.getBool(ctx, "value"))))))
@@ -101,7 +101,17 @@ public final class CurveGenCommands {
     private static int point(CommandContext<CommandSourceStack> ctx, BlockPos pos) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ItemStack stack = planner(ctx);
         if (stack == null) return 0;
-        CurvePlan plan = CurvePlannerItem.getPlan(stack).addPoint(new PlanPoint(pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5));
+        ServerPlayer player = ctx.getSource().getPlayerOrException();
+        if (!player.serverLevel().isInWorldBounds(pos) || !player.serverLevel().getWorldBorder().isWithinBounds(pos)) {
+            ctx.getSource().sendFailure(Component.translatable("curvegen.cmd.out_of_world"));
+            return 0;
+        }
+        CurvePlan before = CurvePlannerItem.getPlan(stack);
+        CurvePlan plan = before.addPoint(new PlanPoint(pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5));
+        if (plan == before) {
+            ctx.getSource().sendFailure(Component.translatable("curvegen.msg.point_ignored"));
+            return 0;
+        }
         CurvePlannerItem.setPlan(stack, plan);
         String label = plan.draft().nextClickLabel(plan.draftIsFirst(), plan.hasPreviousTangent());
         ctx.getSource().sendSuccess(() -> label == null
@@ -113,7 +123,13 @@ public final class CurveGenCommands {
     private static int edit(CommandContext<CommandSourceStack> ctx, java.util.function.UnaryOperator<CurvePlan> op, String key) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ItemStack stack = planner(ctx);
         if (stack == null) return 0;
-        CurvePlannerItem.setPlan(stack, op.apply(CurvePlannerItem.getPlan(stack)));
+        CurvePlan before = CurvePlannerItem.getPlan(stack);
+        CurvePlan after = op.apply(before);
+        if (after.equals(before)) {
+            ctx.getSource().sendFailure(Component.translatable("curvegen.cmd.nothing_changed"));
+            return 0;
+        }
+        CurvePlannerItem.setPlan(stack, after);
         ctx.getSource().sendSuccess(() -> Component.translatable(key), false);
         return 1;
     }
@@ -138,6 +154,7 @@ public final class CurveGenCommands {
         WorldPlacer.Report report = WorldPlacer.place(player.serverLevel(), blocks, player, player.getUUID());
         ctx.getSource().sendSuccess(() -> Component.translatable("curvegen.msg.placed", report.placed(), report.skippedUnloaded()), false);
         if (report.itemsReturned() > 0) ctx.getSource().sendSuccess(() -> Networking.returnedMessage(player, report.itemsReturned()), false);
+        if (report.containersReplaced() > 0) ctx.getSource().sendSuccess(() -> Component.translatable("curvegen.msg.containers", report.containersReplaced()), false);
         for (String w : blocks.warnings()) ctx.getSource().sendSuccess(() -> Component.literal("§e" + w), false);
         return report.placed();
     }

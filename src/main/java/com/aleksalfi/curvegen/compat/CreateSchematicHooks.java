@@ -79,6 +79,7 @@ final class CreateSchematicHooks {
         stack.set(AllDataComponents.SCHEMATIC_ANCHOR, anchor);
         stack.set(AllDataComponents.SCHEMATIC_ROTATION, Rotation.NONE);
         stack.set(AllDataComponents.SCHEMATIC_MIRROR, Mirror.NONE);
+        com.simibubi.create.content.schematics.SchematicInstances.clearHash(stack);
     }
 
     /** Reads the anchor stored by {@link SchematicWriter} from the uploaded copy of the schematic file. */

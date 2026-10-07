@@ -47,20 +47,25 @@ public class BlockPickerScreen extends Screen {
 
     private final Screen parent;
     private final boolean materialMode;
+    private final boolean allowClear;
     private final Consumer<String> callback;
     private final String current;
     private EditBox search, custom;
     private String searchText = "";
+    private String customText;
     private List<Entry> filtered = List.of();
     private int scroll;
     private boolean compatibleOnly;
     private Component error = Component.empty();
 
-    public BlockPickerScreen(Screen parent, String current, boolean materialMode, Consumer<String> callback) {
+    /** @param allowClear whether an empty choice ("none" / "same as block") can be picked */
+    public BlockPickerScreen(Screen parent, String current, boolean materialMode, boolean allowClear, Consumer<String> callback) {
         super(Component.translatable("curvegen.gui.picker.title"));
         this.parent = parent;
         this.current = current;
+        this.customText = current == null ? "" : current;
         this.materialMode = materialMode;
+        this.allowClear = allowClear;
         this.compatibleOnly = materialMode;
         this.callback = callback;
     }
@@ -89,7 +94,8 @@ public class BlockPickerScreen extends Screen {
         custom = new EditBox(font, 20, 42, width - 40 - 190, 18, Component.translatable("curvegen.gui.picker.custom"));
         custom.setHint(Component.translatable("curvegen.gui.picker.custom"));
         custom.setMaxLength(512);
-        custom.setValue(current == null ? "" : current);
+        custom.setValue(customText);
+        custom.setResponder(t -> customText = t);
         addRenderableWidget(custom);
         addRenderableWidget(Button.builder(Component.translatable("curvegen.gui.picker.apply"), b -> applyCustom())
                 .bounds(width - 20 - 186, 42, 50, 18).build());
@@ -99,11 +105,16 @@ public class BlockPickerScreen extends Screen {
         int bottomY = height - 24;
         if (materialMode) {
             addRenderableWidget(Checkbox.builder(Component.translatable("curvegen.gui.picker.compatible_only"), font)
-                    .pos(width - 90 - 200, bottomY).selected(compatibleOnly).onValueChange((cb, v) -> { compatibleOnly = v; scroll = 0; refilter(); }).build());
+                    .pos(20, bottomY).selected(compatibleOnly).onValueChange((cb, v) -> { compatibleOnly = v; scroll = 0; refilter(); }).build());
+        }
+        if (allowClear) {
+            addRenderableWidget(Button.builder(Component.translatable("curvegen.gui.picker.clear"), b -> finish(""))
+                    .bounds(width - 150, bottomY, 66, 18).build());
         }
         addRenderableWidget(Button.builder(Component.translatable("curvegen.gui.picker.cancel"), b -> onClose())
                 .bounds(width - 80, bottomY, 60, 18).build());
         refilter();
+        scroll = Math.max(0, Math.min(maxScroll(), scroll));
     }
 
     private void refilter() {
@@ -182,7 +193,7 @@ public class BlockPickerScreen extends Screen {
             List<Component> tip = new ArrayList<>();
             tip.add(Component.literal(hovered.name));
             tip.add(Component.literal(hovered.id).withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
-            if (materialMode && !isCompatible(hovered)) tip.add(Component.literal("Not usable as copycat material").withStyle(net.minecraft.ChatFormatting.RED));
+            if (materialMode && !isCompatible(hovered)) tip.add(Component.translatable("curvegen.gui.picker.incompatible").withStyle(net.minecraft.ChatFormatting.RED));
             g.renderComponentTooltip(font, tip, mouseX, mouseY);
         }
     }
