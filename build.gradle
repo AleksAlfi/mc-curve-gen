@@ -1,0 +1,136 @@
+plugins {
+    id 'java-library'
+    id 'idea'
+    id 'net.neoforged.moddev' version '2.0.148'
+}
+
+version = project.mod_version
+group = project.mod_group_id
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+base {
+    archivesName = project.mod_id
+}
+
+repositories {
+    mavenCentral()
+    maven { name = 'Create'; url = 'https://maven.createmod.net' }
+    maven { name = 'tterrag'; url = 'https://maven.tterrag.com' }
+    exclusiveContent {
+        forRepository { maven { name = 'Modrinth'; url = 'https://api.modrinth.com/maven' } }
+        filter { includeGroup 'maven.modrinth' }
+    }
+}
+
+neoForge {
+    version = project.neo_version
+
+    runs {
+        client {
+            client()
+            gameDirectory = project.file('run')
+            // ./gradlew runClient -PquickPlay=<world folder in run/saves> jumps straight into that world
+            if (project.hasProperty('quickPlay')) programArguments.addAll('--quickPlaySingleplayer', project.property('quickPlay').toString())
+        }
+        server {
+            server()
+            programArgument '--nogui'
+            gameDirectory = project.file('run-server')
+        }
+        gameTestServer {
+            type = 'gameTestServer'
+            gameDirectory = project.file('run-gametest')
+        }
+        data {
+            data()
+            gameDirectory = project.file('run-data')
+            programArguments.addAll '--mod', project.mod_id, '--all',
+                    '--output', file('src/generated/resources/').getAbsolutePath(),
+                    '--existing', file('src/main/resources/').getAbsolutePath()
+        }
+        configureEach {
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            logLevel = org.slf4j.event.Level.INFO
+        }
+    }
+
+    mods {
+        "${project.mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+dependencies {
+    // Create is a compile-time dependency for the schematic integration (AllDataComponents, SchematicItem, CreatePaths).
+    // The full Create jar + Copycats+ are dropped into run/mods for the dev client by `downloadRuntimeMods`.
+    compileOnly "com.simibubi.create:create-${project.minecraft_version}:${project.create_version}:slim"
+    compileOnly "dev.engine-room.flywheel:flywheel-neoforge-${project.minecraft_version}:1.0.6"
+    compileOnly "net.createmod.ponder:ponder-neoforge:1.0.82+mc${project.minecraft_version}"
+
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+}
+
+var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
+    var replaceProperties = [
+            minecraft_version      : project.minecraft_version,
+            minecraft_version_range: project.minecraft_version_range,
+            neo_version            : project.neo_version,
+            neo_version_range      : project.neo_version_range,
+            loader_version_range   : project.loader_version_range,
+            create_version_range   : project.create_version_range,
+            mod_id                 : project.mod_id,
+            mod_name               : project.mod_name,
+            mod_license            : project.mod_license,
+            mod_version            : project.mod_version,
+            mod_authors            : project.mod_authors,
+            mod_description        : project.mod_description
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from 'src/main/templates'
+    into 'build/generated/sources/modMetadata'
+}
+sourceSets.main.resources.srcDir generateModMetadata
+neoForge.ideSyncTask generateModMetadata
+
+// Downloads Create and Copycats+ into run/mods so the dev client/server has them loaded (with their jar-in-jar deps).
+tasks.register('downloadRuntimeMods') {
+    group = 'curvegen'
+    description = 'Downloads Create and Copycats+ jars into run/mods and run-server/mods for the dev runs.'
+    doLast {
+        def urls = [project.create_runtime_jar_url, project.copycats_runtime_jar_url]
+        ['run/mods', 'run-server/mods', 'run-gametest/mods'].each { dirName ->
+            def dir = project.file(dirName)
+            dir.mkdirs()
+            urls.each { u ->
+                def name = java.net.URLDecoder.decode(u.substring(u.lastIndexOf('/') + 1), 'UTF-8')
+                def target = new File(dir, name)
+                if (!target.exists()) {
+                    logger.lifecycle("Downloading ${name} -> ${dir}")
+                    new URL(u).withInputStream { i -> target.withOutputStream { it << i } }
+                }
+            }
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}

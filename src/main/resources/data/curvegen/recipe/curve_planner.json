@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    " PC",
+    " SP",
+    "S  "
+  ],
+  "key": {
+    "P": { "item": "minecraft:paper" },
+    "C": { "item": "minecraft:compass" },
+    "S": { "item": "minecraft:stick" }
+  },
+  "result": { "id": "curvegen:curve_planner", "count": 1 }
+}
