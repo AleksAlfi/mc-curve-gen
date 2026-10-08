@@ -75,12 +75,13 @@ public final class RoadCodecs {
             NODE.listOf().optionalFieldOf("nodes", List.of()).forGetter(n -> List.copyOf(n.nodes().values())),
             LINK.listOf().optionalFieldOf("links", List.of()).forGetter(n -> List.copyOf(n.links().values())),
             Codec.INT.optionalFieldOf("next_id", 1).forGetter(RoadNetwork::nextId),
+            Codec.INT.optionalFieldOf("next_link_id", 1).forGetter(RoadNetwork::nextLinkId),
             Codec.STRING.optionalFieldOf("default_class", "street").forGetter(RoadNetwork::defaultClass),
             Codec.STRING.optionalFieldOf("owner", "").forGetter(RoadNetwork::owner),
             Codec.unboundedMap(Codec.STRING, ACCESS).optionalFieldOf("shares", Map.of()).forGetter(RoadNetwork::shares),
             Codec.unboundedMap(Codec.STRING, Codec.STRING).optionalFieldOf("player_names", Map.of()).forGetter(RoadNetwork::playerNames),
             ACCESS.optionalFieldOf("public_access", Access.NONE).forGetter(RoadNetwork::publicAccess)
-    ).apply(i, (name, classes, nodes, links, nextId, def, owner, shares, names, pub) -> {
+    ).apply(i, (name, classes, nodes, links, nextId, nextLinkId, def, owner, shares, names, pub) -> {
         Map<String, RoadClass> cm = new java.util.LinkedHashMap<>();
         if (classes.isEmpty()) cm.putAll(RoadNetwork.empty(name).classes());
         for (RoadClass c : classes) cm.put(c.id(), c);
@@ -88,10 +89,10 @@ public final class RoadCodecs {
         for (RoadNode n : nodes) nm.put(n.id(), n);
         Map<Integer, RoadLink> lm = new java.util.LinkedHashMap<>();
         for (RoadLink l : links) if (nm.containsKey(l.a()) && nm.containsKey(l.b())) lm.put(l.id(), l);
-        int next = nextId;
+        int next = nextId, nextLink = nextLinkId;
         for (int id : nm.keySet()) next = Math.max(next, id + 1);
-        for (int id : lm.keySet()) next = Math.max(next, id + 1);
-        return new RoadNetwork(name, cm, nm, lm, next, cm.containsKey(def) ? def : cm.keySet().iterator().next(), owner, shares, names, pub);
+        for (int id : lm.keySet()) nextLink = Math.max(nextLink, id + 1);
+        return new RoadNetwork(name, cm, nm, lm, next, nextLink, cm.containsKey(def) ? def : cm.keySet().iterator().next(), owner, shares, names, pub);
     }));
 
     public static final StreamCodec<ByteBuf, RoadNetwork> NETWORK_STREAM =

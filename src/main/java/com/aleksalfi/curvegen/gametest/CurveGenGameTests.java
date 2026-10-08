@@ -124,7 +124,7 @@ public class CurveGenGameTests {
                 .addNode(o.getX() + 2.5, o.getY() + 3, o.getZ() + 20.5).addNode(o.getX() + 30.5, o.getY() + 3, o.getZ() + 20.5)
                 .addNode(o.getX() + 38.5, o.getY() + 3, o.getZ() + 20.5).addNode(o.getX() + 30.5, o.getY() + 3, o.getZ() + 38.5)
                 .addLink(1, 2, "street").addLink(2, 3, "street").addLink(2, 4, "street");
-        network = network.putNode(network.nodes().get(2).withArm(7, new com.aleksalfi.curvegen.road.ArmSettings(com.aleksalfi.curvegen.road.ArmPriority.STOP, false)));
+        network = network.putNode(network.nodes().get(2).withArm(3, new com.aleksalfi.curvegen.road.ArmSettings(com.aleksalfi.curvegen.road.ArmPriority.STOP, false)));
         com.aleksalfi.curvegen.road.RoadCompiler.Result result = com.aleksalfi.curvegen.road.RoadCompiler.compile(network, helper.getLevel());
         BlockPlan blocks = result.blocks();
         if (blocks.isEmpty()) helper.fail("no road blocks generated: " + blocks.warnings());

@@ -85,7 +85,7 @@
   "curvegen.road.class.sidewalk_block": "Sidewalk",
   "curvegen.road.class.remove": "Remove class",
   "curvegen.road.class.back": "Back",
-  "curvegen.enum.nodekind.auto": "Auto (plain / junction)",
+  "curvegen.enum.nodekind.auto": "Auto",
   "curvegen.enum.nodekind.roundabout": "Roundabout",
   "curvegen.enum.corner.fillet": "Fillet (arc)",
   "curvegen.enum.corner.smooth": "Smooth",

@@ -15,7 +15,7 @@ import java.util.Map;
  * @param publicAccess access granted to everyone else
  */
 public record RoadNetwork(String name, Map<String, RoadClass> classes, Map<Integer, RoadNode> nodes, Map<Integer, RoadLink> links,
-                          int nextId, String defaultClass, String owner, Map<String, Access> shares, Map<String, String> playerNames,
+                          int nextId, int nextLinkId, String defaultClass, String owner, Map<String, Access> shares, Map<String, String> playerNames,
                           Access publicAccess) {
 
     public static final int MAX_NODES = 2000;
@@ -34,7 +34,7 @@ public record RoadNetwork(String name, Map<String, RoadClass> classes, Map<Integ
     public static RoadNetwork empty(String name) {
         Map<String, RoadClass> classes = new LinkedHashMap<>();
         for (RoadClass c : List.of(RoadClass.street(), RoadClass.mainRoad(), RoadClass.highway())) classes.put(c.id(), c);
-        return new RoadNetwork(name, classes, Map.of(), Map.of(), 1, "street", "", Map.of(), Map.of(), Access.NONE);
+        return new RoadNetwork(name, classes, Map.of(), Map.of(), 1, 1, "street", "", Map.of(), Map.of(), Access.NONE);
     }
 
     public static RoadNetwork empty(String name, java.util.UUID owner, String ownerName) {
@@ -58,7 +58,7 @@ public record RoadNetwork(String name, Map<String, RoadClass> classes, Map<Integ
     public String ownerName() { return playerNames.getOrDefault(owner, owner.isEmpty() ? "-" : owner); }
 
     private RoadNetwork with(Map<String, Access> newShares, Map<String, String> newNames, String newOwner, Access newPublic) {
-        return new RoadNetwork(name, classes, nodes, links, nextId, defaultClass, newOwner, newShares, newNames, newPublic);
+        return new RoadNetwork(name, classes, nodes, links, nextId, nextLinkId, defaultClass, newOwner, newShares, newNames, newPublic);
     }
 
     public RoadNetwork withOwner(java.util.UUID player, String playerName) {
@@ -78,7 +78,11 @@ public record RoadNetwork(String name, Map<String, RoadClass> classes, Map<Integ
     public RoadNetwork withPublicAccess(Access access) { return with(shares, playerNames, owner, access); }
 
     private RoadNetwork copy(Map<String, RoadClass> c, Map<Integer, RoadNode> n, Map<Integer, RoadLink> l, int next, String def) {
-        return new RoadNetwork(name, c, n, l, next, def, owner, shares, playerNames, publicAccess);
+        return new RoadNetwork(name, c, n, l, next, nextLinkId, def, owner, shares, playerNames, publicAccess);
+    }
+
+    private RoadNetwork copyLinks(Map<Integer, RoadNode> n, Map<Integer, RoadLink> l, int nextLink) {
+        return new RoadNetwork(name, classes, n, l, nextId, nextLink, defaultClass, owner, shares, playerNames, publicAccess);
     }
 
     public RoadClass classOf(RoadLink link) {
@@ -152,8 +156,8 @@ public record RoadNetwork(String name, Map<String, RoadClass> classes, Map<Integ
         if (a == b || !nodes.containsKey(a) || !nodes.containsKey(b) || linkBetween(a, b) != null) return this;
         if (links.size() >= MAX_LINKS) return this;
         Map<Integer, RoadLink> l = new LinkedHashMap<>(links);
-        l.put(nextId, new RoadLink(nextId, a, b, classId));
-        return copy(classes, nodes, l, nextId + 1, defaultClass);
+        l.put(nextLinkId, new RoadLink(nextLinkId, a, b, classId));
+        return copyLinks(nodes, l, nextLinkId + 1);
     }
 
     public RoadNetwork removeLink(int id) {

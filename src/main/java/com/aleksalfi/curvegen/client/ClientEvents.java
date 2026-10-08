@@ -47,7 +47,12 @@ public final class ClientEvents {
             return;
         }
         while (CurveGenClient.OPEN_PLANNER.consumeClick()) {
-            if (CurvePlannerItem.held(mc.player) != null && mc.screen == null) mc.setScreen(new PlannerScreen());
+            if (mc.screen != null) continue;
+            if (mc.player.getMainHandItem().getItem() instanceof RoadPlannerItem || (CurvePlannerItem.held(mc.player) == null && RoadPlannerItem.held(mc.player) != null)) {
+                ClientHooks.openRoadPlanner(RoadPlannerItem.held(mc.player));
+            } else if (CurvePlannerItem.held(mc.player) != null) {
+                mc.setScreen(new PlannerScreen());
+            }
         }
         while (CurveGenClient.TOGGLE_PREVIEW.consumeClick()) previewEnabled = !previewEnabled;
         updatePreview(mc);

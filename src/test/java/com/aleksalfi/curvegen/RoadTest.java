@@ -102,7 +102,7 @@ class RoadTest {
         RoadNode j = net.nodes().get(2);
         assertTrue(RoadGeometry.isJunction(net, j));
         // Side road (link 7) must stop; main road arms have priority.
-        net = net.putNode(j.withArm(7, new ArmSettings(ArmPriority.STOP, true)).withArm(5, ArmSettings.DEFAULT.withPriority(ArmPriority.PRIORITY)).withArm(6, ArmSettings.DEFAULT.withPriority(ArmPriority.PRIORITY)));
+        net = net.putNode(j.withArm(3, new ArmSettings(ArmPriority.STOP, true)).withArm(1, ArmSettings.DEFAULT.withPriority(ArmPriority.PRIORITY)).withArm(2, ArmSettings.DEFAULT.withPriority(ArmPriority.PRIORITY)));
         List<RoadChain> chains = RoadGeometry.chains(net);
         assertEquals(3, chains.size());
         Map<Long, RoadPainter.Cell> cells = RoadPainter.paint(net, chains);
@@ -166,10 +166,10 @@ class RoadTest {
     void removingNodeDropsLinksAndArmSettings() {
         RoadNetwork net = RoadNetwork.empty("x").addNode(0, 64, 0).addNode(10, 64, 0).addNode(10, 64, 10)
                 .addLink(1, 2, "street").addLink(2, 3, "street");
-        net = net.putNode(net.nodes().get(2).withArm(4, new ArmSettings(ArmPriority.STOP, true)));
+        net = net.putNode(net.nodes().get(2).withArm(1, new ArmSettings(ArmPriority.STOP, true)));
         net = net.removeNode(1);
         assertEquals(1, net.links().size());
-        assertFalse(net.nodes().get(2).arms().containsKey(4));
+        assertFalse(net.nodes().get(2).arms().containsKey(1));
         assertNull(net.linkBetween(1, 2));
     }
 }
