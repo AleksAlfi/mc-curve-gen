@@ -72,7 +72,10 @@ public final class RoadCodecs {
             Codec.INT.fieldOf("b").forGetter(RoadLink::b),
             Codec.STRING.optionalFieldOf("class", "street").forGetter(RoadLink::classId),
             Codec.STRING.xmap(v -> { try { return LinkDir.valueOf(v); } catch (IllegalArgumentException e) { return LinkDir.TWO_WAY; } }, LinkDir::name)
-                    .optionalFieldOf("dir", LinkDir.TWO_WAY).forGetter(RoadLink::dir)
+                    .optionalFieldOf("dir", LinkDir.TWO_WAY).forGetter(RoadLink::dir),
+            Codec.INT.optionalFieldOf("sidewalk").forGetter(RoadLink::sidewalk),
+            Codec.BOOL.optionalFieldOf("edge_lines").forGetter(RoadLink::edgeLines),
+            Codec.INT.optionalFieldOf("shoulder").forGetter(RoadLink::shoulder)
     ).apply(i, RoadLink::new));
 
     public static final Codec<RoadNetwork> NETWORK = RecordCodecBuilder.create(i -> i.group(

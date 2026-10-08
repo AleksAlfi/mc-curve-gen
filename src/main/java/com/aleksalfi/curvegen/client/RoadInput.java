@@ -38,6 +38,18 @@ public final class RoadInput {
     /** A node picked up with a right-click hold is dropped when the button is released. */
     private static boolean dragging;
 
+    // Button state from the mouse events themselves, so a click shorter than a tick is not lost.
+    private static boolean attackDown, useDown, attackLatch, useLatch;
+    private static boolean attackWasDown, useWasDown;
+
+    /** Called from the client's mouse button event, before the game handles it. */
+    public static void onMouseButton(Minecraft mc, int button, int action) {
+        boolean press = action == org.lwjgl.glfw.GLFW.GLFW_PRESS, release = action == org.lwjgl.glfw.GLFW.GLFW_RELEASE;
+        if (!press && !release) return;
+        if (mc.options.keyAttack.matchesMouse(button)) { attackDown = press; if (press) attackLatch = true; }
+        if (mc.options.keyUse.matchesMouse(button)) { useDown = press; if (press) useLatch = true; }
+    }
+
     /** 0..1 while a hold (delete or pick-up) is in progress, otherwise -1. */
     public static float holdProgress() {
         long start = holdStart >= 0 ? holdStart : useStart;
@@ -56,9 +68,12 @@ public final class RoadInput {
     }
 
     private static void tickAttack(Minecraft mc, boolean active) {
-        boolean down = active && mc.screen == null && mc.options.keyAttack.isDown();
+        boolean pressed = attackLatch && !attackWasDown;
+        attackLatch = false;
+        boolean down = active && mc.screen == null && (attackDown || pressed);
+        attackWasDown = attackDown;
         if (!down) { holdStart = -1; consumed = false; return; }
-        if (!ClientEvents.attackHeldLastTick && !consumed) { press(mc); return; }
+        if (pressed && !consumed) { press(mc); if (!attackDown) { holdStart = -1; consumed = false; } return; }
         if (holdStart < 0) return;
         if (!RoadAim.target.same(holdTarget)) { holdStart = -1; consumed = true; return; }
         if (System.currentTimeMillis() - holdStart >= HOLD_MS) {
@@ -69,7 +84,10 @@ public final class RoadInput {
     }
 
     private static void tickUse(Minecraft mc, boolean active) {
-        boolean down = active && mc.screen == null && mc.options.keyUse.isDown();
+        boolean pressed = useLatch && !useWasDown;
+        useLatch = false;
+        boolean down = active && mc.screen == null && (useDown || pressed);
+        useWasDown = useDown;
         if (!down) {
             if (useStart >= 0 && !useConsumed) {
                 // Released before the hold: a plain tap. On a node: select / connect; on a road: insert a node.
@@ -83,7 +101,16 @@ public final class RoadInput {
             dragging = false;
             return;
         }
-        if (!ClientEvents.useHeldLastTick && !useConsumed && useStart < 0 && !dragging) { rightPress(mc); return; }
+        if (pressed && !useConsumed && useStart < 0 && !dragging) {
+            rightPress(mc);
+            if (!useDown && useStart >= 0 && !useConsumed) {
+                // Pressed and released within one tick: a tap.
+                if (useTarget.kind() == RoadAim.Kind.ROAD) ClientActions.sendRoadEdit(RoadEdit.at(RoadEdit.Op.NODE_INSERT, useTarget.id(), useTarget.x(), useTarget.y(), useTarget.z()));
+                else ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.NODE_CLICK, useTarget.id()));
+                useStart = -1; useConsumed = false;
+            }
+            return;
+        }
         if (useStart < 0) return;
         boolean movedOff = !RoadAim.target.same(useTarget);
         if (movedOff || System.currentTimeMillis() - useStart >= HOLD_MS) {

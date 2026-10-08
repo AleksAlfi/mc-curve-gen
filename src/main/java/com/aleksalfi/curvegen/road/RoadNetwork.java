@@ -35,7 +35,7 @@ public record RoadNetwork(String name, Map<String, RoadClass> classes, Map<Integ
 
     public static RoadNetwork empty(String name) {
         Map<String, RoadClass> classes = new LinkedHashMap<>();
-        for (RoadClass c : List.of(RoadClass.street(), RoadClass.mainRoad(), RoadClass.highway())) classes.put(c.id(), c);
+        for (RoadClass c : List.of(RoadClass.street(), RoadClass.mainRoad(), RoadClass.highway(), RoadClass.ramp())) classes.put(c.id(), c);
         return new RoadNetwork(name, classes, Map.of(), Map.of(), 1, 1, "street", "", Map.of(), Map.of(), Access.NONE);
     }
 
@@ -87,11 +87,12 @@ public record RoadNetwork(String name, Map<String, RoadClass> classes, Map<Integ
         return new RoadNetwork(name, classes, n, l, nextId, nextLink, defaultClass, owner, shares, playerNames, publicAccess);
     }
 
+    /** The effective class of a link: its class with the road's own overrides applied. */
     public RoadClass classOf(RoadLink link) {
         RoadClass c = classes.get(link.classId());
-        if (c != null) return c;
-        c = classes.get(defaultClass);
-        return c != null ? c : RoadClass.street();
+        if (c == null) c = classes.get(defaultClass);
+        if (c == null) c = RoadClass.street();
+        return link.apply(c);
     }
 
     public RoadClass classOrDefault(String id) {

@@ -77,6 +77,13 @@ public final class ClientEvents {
     /** Whether the use key was down at the end of the previous tick (edge detection for right clicks). */
     public static boolean useHeldLastTick;
 
+    @SubscribeEvent
+    public static void onMouseButton(net.neoforged.neoforge.client.event.InputEvent.MouseButton.Pre event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen != null || !roadActive(mc)) return;
+        RoadInput.onMouseButton(mc, event.getButton(), event.getAction());
+    }
+
     /** With the road planner, neither mouse button reaches vanilla (no block breaking, placing or using); {@link RoadInput} handles both. */
     @SubscribeEvent
     public static void onClickInput(net.neoforged.neoforge.client.event.InputEvent.InteractionKeyMappingTriggered event) {

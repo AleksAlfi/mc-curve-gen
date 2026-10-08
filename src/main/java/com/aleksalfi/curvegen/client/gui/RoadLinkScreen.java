@@ -22,7 +22,7 @@ import java.util.Locale;
 
 /** Settings of one road (link): its class, and priority / zebra at each end node. */
 public class RoadLinkScreen extends Screen implements RoadScreen {
-    private static final int W = 360, H = 150;
+    private static final int W = 420, H = 174;
     private final int linkId;
     private int left, top;
     private boolean needsRebuild;
@@ -56,13 +56,36 @@ public class RoadLinkScreen extends Screen implements RoadScreen {
         label(8, y, 0x55FFFF, Component.translatable("curvegen.road.link.header", linkId, link.a(), link.b()));
         y += 14;
         label(8, y + 5, 0xAAAAAA, Component.translatable("curvegen.road.link.class"));
-        button(60, y, 120, Component.literal(cls.name()), b -> {
+        button(60, y, 150, Component.literal(cls.name()), b -> {
             List<String> ids = new ArrayList<>(net.classes().keySet());
             int idx = ids.indexOf(link.classId());
             ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_CLASS, linkId, ids.get((idx + 1) % ids.size())));
         });
-        button(190, y, W - 8 - 190, Component.translatable("curvegen.road.link.dir." + link.dir().name().toLowerCase(Locale.ROOT), link.a(), link.b()),
+        button(220, y, W - 8 - 220, Component.translatable("curvegen.road.link.dir." + link.dir().name().toLowerCase(Locale.ROOT), link.a(), link.b()),
                 b -> ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_DIR, linkId, link.dir().next().name())));
+        y += 22;
+        // Per-road overrides: each cycles class value -> options -> class value.
+        label(8, y + 5, 0xAAAAAA, Component.translatable("curvegen.road.link.overrides"));
+        RoadClass base = net.classes().getOrDefault(link.classId(), cls);
+        String sw = link.sidewalk().map(String::valueOf).orElse(null);
+        button(76, y, 108, Component.translatable("curvegen.road.link.sidewalk", sw == null ? Component.translatable("curvegen.road.link.inherit", base.sidewalkWidth()) : Component.literal(sw)), b -> {
+            int[] steps = {-1, 0, 1, 2, 3, 4, 5, 6};
+            int cur = link.sidewalk().orElse(-1);
+            int idx = java.util.Arrays.stream(steps).boxed().toList().indexOf(cur);
+            ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_SIDEWALK, linkId, steps[(Math.max(0, idx) + 1) % steps.length]));
+        });
+        String el = link.edgeLines().map(v -> Component.translatable(v ? "curvegen.gui.on" : "curvegen.gui.off").getString()).orElse(null);
+        button(188, y, 108, Component.translatable("curvegen.road.link.edge_lines", el == null ? Component.translatable("curvegen.road.link.inherit", Component.translatable(base.edgeLines() ? "curvegen.gui.on" : "curvegen.gui.off")) : Component.literal(el)), b -> {
+            int next = link.edgeLines().isEmpty() ? 1 : link.edgeLines().get() ? 0 : -1;
+            ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_EDGE_LINES, linkId, next));
+        });
+        String sh = link.shoulder().map(String::valueOf).orElse(null);
+        button(300, y, W - 8 - 300, Component.translatable("curvegen.road.link.shoulder", sh == null ? Component.translatable("curvegen.road.link.inherit", base.shoulderWidth()) : Component.literal(sh)), b -> {
+            int[] steps = {-1, 0, 1, 2, 3, 4};
+            int cur = link.shoulder().orElse(-1);
+            int idx = java.util.Arrays.stream(steps).boxed().toList().indexOf(cur);
+            ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_SHOULDER, linkId, steps[(Math.max(0, idx) + 1) % steps.length]));
+        });
         y += 24;
         label(8, y, 0x55FFFF, Component.translatable("curvegen.road.link.ends"));
         y += 12;
@@ -71,9 +94,9 @@ public class RoadLinkScreen extends Screen implements RoadScreen {
             if (n == null) continue;
             ArmSettings arm = n.arm(linkId);
             label(8, y + 5, 0xCCCCCC, Component.translatable("curvegen.road.link.at", nodeId, ClientEvents.describeNode(net, n)));
-            button(150, y, 90, Component.translatable("curvegen.enum.priority." + arm.priority().name().toLowerCase(Locale.ROOT)),
+            button(190, y, 90, Component.translatable("curvegen.enum.priority." + arm.priority().name().toLowerCase(Locale.ROOT)),
                     b -> ClientActions.sendRoadEdit(RoadEdit.node(n.withArm(linkId, n.arm(linkId).withPriority(n.arm(linkId).priority().next())))));
-            addRenderableWidget(Checkbox.builder(Component.translatable("curvegen.road.node.arm_zebra"), font).pos(left + 246, top + y).selected(arm.zebra())
+            addRenderableWidget(Checkbox.builder(Component.translatable("curvegen.road.node.arm_zebra"), font).pos(left + 286, top + y).selected(arm.zebra())
                     .onValueChange((cb, v) -> ClientActions.sendRoadEdit(RoadEdit.node(n.withArm(linkId, n.arm(linkId).withZebra(v))))).build());
             button(W - 8 - 44, y, 44, Component.translatable("curvegen.road.link.edit_node"), b -> Minecraft.getInstance().setScreen(new RoadNodeScreen(nodeId)));
             y += 22;

@@ -610,10 +610,16 @@ class RoadTest {
             if (sf == Surface.ASPHALT || sf == Surface.LINE) paved++;
         }
         assertTrue(lines > 5 && paved > 40, "gore should be paved and hatched, lines=" + lines + " paved=" + paved);
-        // The ramp's curb and sidewalk beside the gore are untouched: no raised cell becomes a marking.
+        // In the merge zone the ramp has no pavement: nothing raised between the highway's edge and the ramp lane,
+        // and the acceleration lane's outer edge line continues along the ramp's outer side up to the nose.
+        for (int x = -12; x <= -2; x++) for (int z = 18; z <= 22; z++) assertFalse(at(cells, x, z).raised(), "raised cell in the merge zone at " + x + "," + z);
+        int edgeLines = 0;
+        for (int x = -12; x <= -2; x++) for (int z = 26; z <= 31; z++) if (at(cells, x, z) == Surface.LINE) { edgeLines++; break; }
+        assertTrue(edgeLines >= 8, "edge line along the ramp's outer side in the merge zone: " + edgeLines);
+        // Further up the ramp the sidewalk is back.
         int raised = 0;
-        for (int x = -60; x <= 0; x++) for (int z = 0; z < 60; z++) { Surface sf = at(cells, x, z); if (sf == Surface.CURB || sf == Surface.SIDEWALK) raised++; }
-        assertTrue(raised > 60, "ramp sidewalk should survive beside the gore, raised=" + raised);
+        for (int x = -80; x <= -40; x++) for (int z = 20; z < 60; z++) if (at(cells, x, z).raised()) raised++;
+        assertTrue(raised > 40, "ramp sidewalk beyond the merge zone, raised=" + raised);
     }
 
     /** An entry followed by an exit within twice the merge length share one continuous weaving lane. */
@@ -737,7 +743,7 @@ class RoadTest {
     void classOrderIsStable() {
         RoadNetwork net = RoadNetwork.empty("x");
         List<String> order = new java.util.ArrayList<>(net.classes().keySet());
-        assertEquals(3, order.size());
+        assertEquals(4, order.size());
         RoadNetwork edited = net.withDefaultClass(order.get(1)).addNode(0, 64, 0).putClass(net.classes().get(order.get(0)).withName("Renamed"));
         assertEquals(order, new java.util.ArrayList<>(edited.classes().keySet()));
         RoadNetwork decoded = new RoadNetwork(edited.name(), edited.classes(), edited.nodes(), edited.links(), edited.nextId(), edited.nextLinkId(),
@@ -746,12 +752,35 @@ class RoadTest {
         // Cycling "next class" from each class visits all three.
         java.util.Set<String> seen = new java.util.HashSet<>();
         String cur = decoded.defaultClass();
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 4; i++) {
             List<String> ids = new java.util.ArrayList<>(decoded.classes().keySet());
             cur = ids.get((ids.indexOf(cur) + 1) % ids.size());
             decoded = decoded.withDefaultClass(cur);
             seen.add(cur);
         }
-        assertEquals(3, seen.size());
+        assertEquals(4, seen.size());
+    }
+
+    /** Per-road overrides change the effective class, and two roads of one class with different overrides taper. */
+    @Test
+    void perRoadOverridesApply() {
+        RoadNetwork net = RoadNetwork.empty("x").addNode(0.5, 64, 0.5).addNode(100.5, 64, 0.5).addNode(200.5, 64, 0.5)
+                .addLink(1, 2, "street").addLink(2, 3, "street");
+        net = net.putLink(net.links().get(2).withSidewalk(java.util.Optional.of(0)).withEdgeLines(java.util.Optional.of(true)).withShoulder(java.util.Optional.of(2)));
+        RoadClass eff = net.classOf(net.links().get(2));
+        assertEquals(0, eff.sidewalkWidth());
+        assertTrue(eff.edgeLines());
+        assertEquals(2, eff.shoulderWidth());
+        assertEquals(3, net.classOf(net.links().get(1)).sidewalkWidth(), "the other road keeps the class value");
+        RoadChain c = RoadGeometry.chains(net).get(0);
+        assertEquals(1, RoadGeometry.chains(net).size());
+        assertEquals(RoadClass.street().halfTotal(), c.halfAt(30), 1e-9);
+        assertEquals(eff.halfTotal(), c.halfAt(150), 1e-9);
+        assertTrue(c.profile().taperRanges().size() == 1, "a taper between the two overrides");
+        CellMap cells = RoadPainter.paint(net, RoadGeometry.chains(net));
+        assertEquals(Surface.SIDEWALK, at(cells, 30, 9));
+        assertEquals(Surface.LINE, at(cells, 150, 7), "edge line on the overridden road");
+        assertEquals(Surface.ASPHALT, at(cells, 150, 8), "shoulder outside the edge line");
+        assertEquals(Surface.NONE, at(cells, 150, 10));
     }
 }

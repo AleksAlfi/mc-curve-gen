@@ -157,7 +157,11 @@ the player who created them.
      node kind can force either. Right-hand traffic: the ramp must lie to the right of the carriageway it serves.
    * **Class change** at a node: the wider road tapers into the narrower one over 10 blocks per block of width
      difference (at least 20), entirely on the wider road's side; curbs and sidewalks switch at the node.
-5. **Road classes** (per network, editable, three by default): lane width (6 / 7 / 8 blocks, sized for
+   * **Per road** (road screen, or `/roadgen linkset <road> sidewalk|edgelines|shoulder <value|class>`): the
+     sidewalk width, edge lines and shoulder can override the class for one road, e.g. a street without
+     pavement where it serves as a ramp. Roads of one class with different overrides taper into each other.
+5. **Road classes** (per network, editable, four by default: Street, Main road, Highway and Ramp, the last a
+   single 8-wide lane with edge lines and a 1-block shoulder and no pavement): lane width (6 / 7 / 8 blocks, sized for
    Create Aeronautics vehicles), lanes per direction, sidewalk width, curb height (copycat layers),
    solid edge lines, smooth edges (sideways copycat layers on the outer edge, off by default; ramps and
    curbs use upward layers regardless), hard shoulder width (asphalt outside the edge line, 2 on the highway

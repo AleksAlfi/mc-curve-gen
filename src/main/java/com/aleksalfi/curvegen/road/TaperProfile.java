@@ -21,6 +21,14 @@ public final class TaperProfile implements Rasterizer.WidthProfile {
     public record AuxLane(boolean rightSide, double start, double end, boolean taperIn, boolean taperOut, double laneWidth) {}
 
     private final List<AuxLane> auxLanes = new ArrayList<>();
+    /** Along-ranges with a fixed cross-section (the merge zone of a ramp): {from, to} and the widths. */
+    private final List<double[]> zoneRanges = new ArrayList<>();
+    private final List<double[]> zoneWidths = new ArrayList<>();
+
+    public void addZone(double from, double to, double[] widths) {
+        zoneRanges.add(new double[]{from, to});
+        zoneWidths.add(widths);
+    }
     private final double[] nodeAlong;      // along-position of every node of the chain
     private final double[][] linkWidths;   // canonical widths per link
     private final double[] taperFrom, taperTo; // per node: along-range of its taper (NaN when none)
@@ -79,7 +87,9 @@ public final class TaperProfile implements Rasterizer.WidthProfile {
     public double maxHalf() {
         double extra = 0;
         for (AuxLane a : auxLanes) extra = Math.max(extra, a.laneWidth() + 1);
-        return maxHalf + extra;
+        double mh = maxHalf + extra;
+        for (double[] w : zoneWidths) mh = Math.max(mh, Rasterizer.half(w));
+        return mh;
     }
 
     /** Extent to the left (positive lateral) and right of the centre line at along-position {@code s}. */
@@ -88,6 +98,7 @@ public final class TaperProfile implements Rasterizer.WidthProfile {
 
     @Override
     public double[] widthsAt(double s) {
+        for (int i = 0; i < zoneRanges.size(); i++) if (s >= zoneRanges.get(i)[0] && s <= zoneRanges.get(i)[1]) return zoneWidths.get(i);
         double[] base = baseWidthsAt(s);
         if (auxLanes.isEmpty()) return base;
         double[] out = base.clone();

@@ -337,6 +337,8 @@ public final class RoadGeometry {
         if (loop) nodeAlong[nodeAlong.length - 1] = line.totalLength();
         TaperProfile profile = new TaperProfile(nodeAlong, linkClasses, oneWay);
         solidRanges.addAll(profile.taperRanges());
+        if (rampStart) mergeZone(profile, line, mStart, linkClasses.get(0), oneWay, true);
+        if (rampEnd) mergeZone(profile, line, mEnd, linkClasses.get(linkClasses.size() - 1), oneWay, false);
         // The two-way road approaching a split gets a solid centre line.
         if (sStart != null && sStart.twoWay().id() == linkIds.get(0)) solidRanges.add(new double[]{0, 4.0 * cls.laneWidth()});
         if (sEnd != null && sEnd.twoWay().id() == linkIds.get(linkIds.size() - 1)) solidRanges.add(new double[]{line.totalLength() - 4.0 * cls.laneWidth(), line.totalLength()});
@@ -465,6 +467,42 @@ public final class RoadGeometry {
             }
         }
         for (TaperProfile.AuxLane a : merged) profile.addAuxLane(a);
+    }
+
+    /**
+     * The merge zone of a ramp chain: the stretch next to the nose where the ramp runs beside the through
+     * road, from the nose to where its lane has moved three quarters of a lane away from the auxiliary
+     * lane's position. There the ramp has no curb or sidewalk (the gore lies on the inner side), and on the
+     * outer side it carries the through road's edge line and shoulder, so the acceleration lane's edge
+     * continues seamlessly into the ramp.
+     */
+    private static void mergeZone(TaperProfile profile, Polyline line, Merge m, RoadClass rampClass, boolean oneWay, boolean atStart) {
+        Vec2 centre = m.node().xz(), right = m.right();
+        double limit = m.auxCentre() + 0.75 * m.highway().laneWidth();
+        double from, to;
+        if (atStart) {
+            int i = 0;
+            while (i + 1 < line.size && new Vec2(line.x[i + 1], line.z[i + 1]).sub(centre).dot(right) <= limit) i++;
+            from = 0; to = line.s[i];
+        } else {
+            int i = line.size - 1;
+            while (i > 0 && new Vec2(line.x[i - 1], line.z[i - 1]).sub(centre).dot(right) <= limit) i--;
+            from = line.s[i]; to = line.totalLength();
+        }
+        if (to - from < 1) return;
+        // Outer side: the chain's right when it travels along d at the nose, else its left.
+        int k = atStart ? 0 : line.size - 1, k2 = atStart ? Math.min(1, line.size - 1) : Math.max(0, line.size - 2);
+        Vec2 travel = new Vec2(line.x[Math.max(k, k2)] - line.x[Math.min(k, k2)], line.z[Math.max(k, k2)] - line.z[Math.min(k, k2)]);
+        boolean outerRight = travel.dot(m.d()) > 0;
+        double[] w = LaneProfile.widthsOf(rampClass, oneWay).clone();
+        int n = w.length;
+        int[] left = {0, 1, 2, 3}, rightIdx = {n - 1, n - 2, n - 3, n - 4}; // sidewalk, curb, shoulder, edge
+        int[] outer = outerRight ? rightIdx : left, inner = outerRight ? left : rightIdx;
+        w[inner[0]] = 0; w[inner[1]] = 0; w[inner[2]] = 0; w[inner[3]] = 0;
+        w[outer[0]] = 0; w[outer[1]] = 0;
+        w[outer[2]] = m.highway().shoulderWidth();
+        w[outer[3]] = m.highway().edgeLines() ? 1 : 0;
+        profile.addZone(from, to, w);
     }
 
     /** Class of the link arriving at node index {@code i} of the (possibly loop-extended) node list. */

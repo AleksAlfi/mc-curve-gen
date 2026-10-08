@@ -46,6 +46,12 @@ public record RoadClass(String id, String name, int laneWidth, int lanesPerDirec
         return lanesPerDirection * laneWidth + (lanesPerDirection - 1) + 0.5; // + half of the centre line
     }
 
+    /** A slip road: one 8-wide lane, no pavement, edge lines and a 1-block shoulder; meant for one-way ramps. */
+    public static RoadClass ramp() {
+        return new RoadClass("ramp", "Ramp", 8, 1, 0, 0, true, false,
+                "minecraft:gray_concrete", "minecraft:white_concrete", "minecraft:stone_bricks", "minecraft:smooth_stone", 1, 60, false);
+    }
+
     /** Half width of a one-way carriageway of this class: all lanes in one direction with lane lines between. */
     public double oneWayHalf() { return (lanesPerDirection * laneWidth + (lanesPerDirection - 1)) / 2.0; }
 
