@@ -64,6 +64,28 @@ public final class SchematicWriter {
         return root;
     }
 
+    /** Largest side of one schematic part; a Schematicannon only prints near its own position. */
+    public static final int REGION = 128;
+
+    /**
+     * Splits a plan into parts of at most {@link #REGION} x {@link #REGION} columns on a grid aligned to the
+     * plan's corner, in row-major order (north to south, west to east). Empty cells are skipped. A plan that
+     * already fits comes back as a single part.
+     */
+    public static java.util.List<BlockPlan> split(BlockPlan plan) {
+        BlockPos min = plan.min(), max = plan.max();
+        if (max.getX() - min.getX() < REGION && max.getZ() - min.getZ() < REGION) return java.util.List.of(plan);
+        java.util.TreeMap<Long, BlockPlan> cells = new java.util.TreeMap<>();
+        for (java.util.Map.Entry<BlockPos, com.aleksalfi.curvegen.build.PlannedBlock> e : plan.blocks().entrySet()) {
+            BlockPos p = e.getKey();
+            long row = (p.getZ() - min.getZ()) / REGION, col = (p.getX() - min.getX()) / REGION;
+            cells.computeIfAbsent(row * 100_000L + col, k -> new BlockPlan()).put(p, e.getValue());
+        }
+        java.util.List<BlockPlan> out = new java.util.ArrayList<>(cells.values());
+        for (String w : plan.warnings()) out.get(0).warn(w);
+        return out;
+    }
+
     /** Writes the schematic and returns the file written. Picks a free name unless {@code overwrite}. */
     public static Path write(BlockPlan plan, Path dir, String name, boolean overwrite) throws IOException {
         Files.createDirectories(dir);

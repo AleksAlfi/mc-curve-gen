@@ -70,20 +70,42 @@ public final class ClientActions {
         if (blocks.isEmpty()) return Component.translatable("curvegen.msg.nothing_to_export").withStyle(ChatFormatting.RED);
         Path dir = CreateCompat.schematicsDir();
         try {
-            Path file = SchematicWriter.write(blocks, dir, name, overwrite);
-            long size = java.nio.file.Files.size(file);
-            if (size > 256 * 1024 && mc.player != null) {
-                mc.player.displayClientMessage(Component.translatable("curvegen.msg.export_large", size / 1024).withStyle(ChatFormatting.GOLD), false);
+            java.util.List<BlockPlan> parts = SchematicWriter.split(blocks);
+            java.util.List<String> written = new java.util.ArrayList<>();
+            String base = SchematicWriter.sanitize(name);
+            if (parts.size() == 1) {
+                written.add(SchematicWriter.write(blocks, dir, base, overwrite).getFileName().toString());
+            } else {
+                if (!overwrite) { // a free base name for the whole set
+                    String b = base; int n = 1;
+                    while (java.nio.file.Files.exists(dir.resolve(b + "_p1.nbt"))) b = base + "_" + (n++);
+                    base = b;
+                } else { // remove parts left over from a larger earlier export
+                    try (var stream = java.nio.file.Files.list(dir)) {
+                        String prefix = base + "_p";
+                        for (Path f : stream.filter(f -> f.getFileName().toString().matches(java.util.regex.Pattern.quote(prefix) + "\\d+\\.nbt")).toList()) java.nio.file.Files.deleteIfExists(f);
+                    } catch (IOException ignored) {}
+                }
+                for (int i = 0; i < parts.size(); i++) written.add(SchematicWriter.write(parts.get(i), dir, base + "_p" + (i + 1), true).getFileName().toString());
             }
-            Component link = Component.literal(file.getFileName().toString()).withStyle(s -> s.withUnderlined(true)
+            long biggest = 0;
+            for (String f : written) biggest = Math.max(biggest, java.nio.file.Files.size(dir.resolve(f)));
+            if (biggest > 256 * 1024 && mc.player != null) {
+                mc.player.displayClientMessage(Component.translatable("curvegen.msg.export_large", biggest / 1024).withStyle(ChatFormatting.GOLD), false);
+            }
+            ExportTracker.track(written);
+            if (CreateCompat.isLoaded()) com.aleksalfi.curvegen.compat.CreateTablePanel.refreshSender();
+            Component link = Component.literal(written.size() == 1 ? written.get(0) : written.get(0) + " … " + written.get(written.size() - 1)).withStyle(st -> st.withUnderlined(true)
                     .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE, dir.toAbsolutePath().toString())));
-            Component msg = Component.translatable("curvegen.msg.exported", link, blocks.size(), blocks.min().toShortString());
             if (mc.player != null) {
-                mc.player.displayClientMessage(msg, false);
-                mc.player.displayClientMessage(Component.translatable("curvegen.msg.exported_howto").withStyle(ChatFormatting.GRAY), false);
+                if (written.size() == 1) mc.player.displayClientMessage(Component.translatable("curvegen.msg.exported", link, blocks.size(), blocks.min().toShortString()), false);
+                else mc.player.displayClientMessage(Component.translatable("curvegen.msg.exported_parts", link, blocks.size(), written.size(), SchematicWriter.REGION, SchematicWriter.REGION), false);
+                mc.player.displayClientMessage(Component.translatable(written.size() == 1 ? "curvegen.msg.exported_howto" : "curvegen.msg.exported_howto_parts").withStyle(ChatFormatting.GRAY), false);
                 for (String w : blocks.warnings()) mc.player.displayClientMessage(Component.literal(w).withStyle(ChatFormatting.GOLD), false);
             }
-            return Component.translatable("curvegen.msg.exported_short", file.getFileName().toString()).withStyle(ChatFormatting.GREEN);
+            return written.size() == 1
+                    ? Component.translatable("curvegen.msg.exported_short", written.get(0)).withStyle(ChatFormatting.GREEN)
+                    : Component.translatable("curvegen.msg.exported_short_parts", written.size()).withStyle(ChatFormatting.GREEN);
         } catch (IOException e) {
             CurveGen.LOGGER.error("Failed to write schematic", e);
             return Component.literal("Export failed: " + e.getMessage()).withStyle(ChatFormatting.RED);

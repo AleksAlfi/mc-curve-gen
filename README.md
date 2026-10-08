@@ -179,6 +179,12 @@ the player who created them.
    through the box and banked at most 10 % to meet it. Grades along a road (ramps) are not limited.
 7. Export, Place, Undo and Deploy work exactly like the curve planner; the preview shows the whole network.
 
+**Large exports** (both planners): a Schematicannon only prints near itself, so anything larger than 128 × 128
+blocks is exported as several parts (`<name>_p1.nbt`, `_p2`, …) on a 128-block grid, each deploying at its own
+position. After an export, Create's Schematic Table shows a *Curve Gen export* panel beside it listing the parts:
+click one to select it in the table, then upload it with the table's button; uploaded parts get a tick.
+*Dismiss* stops tracking the export and hides the panel.
+
 Markings follow simplified EU practice for right-hand traffic: dashed centre line that becomes solid
 in tight bends and on the approach to junctions and roundabouts, dashed lane lines between lanes of the
 same direction (solid centre on multi-lane roads), solid edge lines, stop / give-way lines across the

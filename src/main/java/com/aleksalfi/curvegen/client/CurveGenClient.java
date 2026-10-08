@@ -21,6 +21,9 @@ public class CurveGenClient {
     public CurveGenClient(IEventBus modBus, ModContainer container) {
         modBus.addListener(CurveGenClient::registerKeys);
         container.registerConfig(net.neoforged.fml.config.ModConfig.Type.CLIENT, ClientConfig.SPEC);
+        if (net.neoforged.fml.ModList.get().isLoaded("create")) {
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(com.aleksalfi.curvegen.compat.CreateTablePanel::onInit);
+        }
     }
 
     private static void registerKeys(RegisterKeyMappingsEvent event) {
