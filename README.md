@@ -150,7 +150,8 @@ the player who created them.
    chevrons along it, and a class can paint direction arrows in the lanes (*Arrows*, off by default).
    * **Split**: where a two-way road meets two one-way roads, one leaving and one arriving, both within 60° of
      its direction, the lanes run straight into their roads around a hatched nose. A node kind can force
-     (*Split*) or prevent (*Junction*) it.
+     (*Split*) or prevent (*Junction*) it. *Make split* in the node screen (or `/roadgen node split <id>`) sets
+     both directions for you, e.g. to split a highway into two one-way carriageways and route them apart.
    * **Ramp merge**: a road joining a road with 2+ lanes per direction at under 35° (or any one-way road there)
      becomes an entry or exit ramp: the ramp meets the carriageway at a nose beside the through lanes, with an
      acceleration lane after an entry or a deceleration lane before an exit (*Merge lane* length per class,

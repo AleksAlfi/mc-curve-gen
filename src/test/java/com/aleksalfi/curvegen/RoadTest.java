@@ -854,4 +854,21 @@ class RoadTest {
         assertEquals("street", fresh.linkBetween(1, 2).classId());
         assertFalse(fresh.linkBetween(1, 2).oneWay());
     }
+
+    /** "Make split" turns a highway end with two branches into two one-way carriageways that line up with its lanes. */
+    @Test
+    void makeSplitOnHighway() {
+        RoadNetwork net = RoadNetwork.empty("x").addNode(-100.5, 64, 0.5).addNode(0.5, 64, 0.5).addNode(120.5, 64, 40.5).addNode(120.5, 64, -40.5)
+                .addLink(1, 2, "highway").addLink(2, 3, "highway").addLink(2, 4, "highway");
+        RoadNetwork split = net.makeSplit(2);
+        assertNotSame(net, split);
+        RoadLink south = split.linkBetween(2, 3), north = split.linkBetween(2, 4);
+        assertTrue(south.leaves(2) && south.oneWay(), "south branch (right of eastbound) leaves");
+        assertTrue(north.arrives(2) && north.oneWay(), "north branch arrives");
+        Split sp = Split.at(split, split.nodes().get(2));
+        assertNotNull(sp);
+        assertEquals(9, sp.offset(), 1e-9, "one-way carriageway centred on the two-way half: 8.5 + 0.5");
+        RoadNetwork lone = RoadNetwork.empty("y").addNode(0, 64, 0).addNode(9, 64, 0).addLink(1, 2, "street");
+        assertSame(lone, lone.makeSplit(1), "not a split candidate: unchanged");
+    }
 }

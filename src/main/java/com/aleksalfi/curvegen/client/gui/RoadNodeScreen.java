@@ -141,6 +141,10 @@ public class RoadNodeScreen extends Screen implements RoadScreen {
         Button move = button(92, y, 70, Component.translatable("curvegen.road.node.move"), b -> { com.aleksalfi.curvegen.client.RoadAim.movingNode = nodeId; onClose(); });
         move.setTooltip(Tooltip.create(Component.translatable("curvegen.road.node.move_tip")));
         button(166, y, 80, Component.translatable("curvegen.road.node.deselect"), b -> { ClientActions.sendRoad(RoadActionPayload.Action.DESELECT); onClose(); });
+        if (links.size() == 3) {
+            Button split = button(250, y, 80, Component.translatable("curvegen.road.node.make_split"), b -> ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.NODE_SPLIT, nodeId)));
+            split.setTooltip(Tooltip.create(Component.translatable("curvegen.road.node.make_split_tip")));
+        }
         button(W - 8 - 120, y, 120, Component.translatable("curvegen.road.node.network_screen"), b -> Minecraft.getInstance().setScreen(new RoadNetworkScreen()));
     }
 

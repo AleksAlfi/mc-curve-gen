@@ -181,6 +181,36 @@ public record RoadNetwork(String name, Map<String, RoadClass> classes, Map<Integ
         return next.putLink(made);
     }
 
+    /**
+     * Turns a node with one two-way road and two other roads into a split: the road on the right of the
+     * travel direction away from the two-way road becomes one-way leaving the node, the one on the left
+     * one-way arriving (right-hand traffic). Returns this network unchanged when the node does not fit.
+     */
+    public RoadNetwork makeSplit(int nodeId) {
+        RoadNode node = nodes.get(nodeId);
+        if (node == null) return this;
+        List<RoadLink> ls = linksOf(nodeId);
+        if (ls.size() != 3) return this;
+        RoadLink two = null;
+        for (RoadLink l : ls) if (!l.oneWay()) { if (two == null) two = l; }
+        // Prefer the widest road as the trunk when several are two-way.
+        for (RoadLink l : ls) if (!l.oneWay() && classOf(l).halfTotal() > classOf(two).halfTotal()) two = l;
+        if (two == null) return this;
+        RoadNode t = nodes.get(two.other(nodeId));
+        if (t == null) return this;
+        com.aleksalfi.curvegen.geom.Vec2 d = node.xz().sub(t.xz()).normalize();
+        com.aleksalfi.curvegen.geom.Vec2 right = new com.aleksalfi.curvegen.geom.Vec2(-d.z(), d.x());
+        RoadLink a = null, b = null;
+        for (RoadLink l : ls) if (l.id() != two.id()) { if (a == null) a = l; else b = l; }
+        RoadNode na = nodes.get(a.other(nodeId)), nb = nodes.get(b.other(nodeId));
+        if (na == null || nb == null) return this;
+        double sa = na.xz().sub(node.xz()).dot(right), sb = nb.xz().sub(node.xz()).dot(right);
+        RoadLink out = sa >= sb ? a : b, in = out == a ? b : a;
+        RoadLink outL = out.withDir(out.a() == nodeId ? LinkDir.FORWARD : LinkDir.REVERSE);
+        RoadLink inL = in.withDir(in.b() == nodeId ? LinkDir.FORWARD : LinkDir.REVERSE);
+        return putLink(outL).putLink(inL);
+    }
+
     public RoadNetwork removeLink(int id) {
         if (!links.containsKey(id)) return this;
         Map<Integer, RoadLink> l = new LinkedHashMap<>(links);

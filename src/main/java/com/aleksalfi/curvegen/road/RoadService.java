@@ -193,6 +193,10 @@ public final class RoadService {
                 };
                 next = net.putLink(changed);
             }
+            case NODE_SPLIT -> {
+                next = net.makeSplit(edit.id());
+                if (next == net) { overlay(player, "curvegen.road.split_failed"); return false; }
+            }
             case LINK_DIR -> {
                 RoadLink link = net.links().get(edit.id());
                 if (link == null) return false;

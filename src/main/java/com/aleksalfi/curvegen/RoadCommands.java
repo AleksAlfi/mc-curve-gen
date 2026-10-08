@@ -74,6 +74,8 @@ public final class RoadCommands {
                                 .then(Commands.argument("pos", BlockPosArgument.blockPos()).executes(RoadCommands::nodeInsert))))
                         .then(Commands.literal("select").then(Commands.argument("id", IntegerArgumentType.integer(-1))
                                 .executes(ctx -> edit(ctx, RoadEdit.of(RoadEdit.Op.NODE_SELECT, IntegerArgumentType.getInteger(ctx, "id"))))))
+                        .then(Commands.literal("split").then(Commands.argument("id", IntegerArgumentType.integer(0))
+                                .executes(ctx -> edit(ctx, RoadEdit.of(RoadEdit.Op.NODE_SPLIT, IntegerArgumentType.getInteger(ctx, "id"))))))
                         .then(Commands.literal("delete").then(Commands.argument("id", IntegerArgumentType.integer(0))
                                 .executes(ctx -> edit(ctx, RoadEdit.of(RoadEdit.Op.NODE_DELETE, IntegerArgumentType.getInteger(ctx, "id"))))))
                         .then(enumCommand("kind", NodeKind.values(), (ctx, v) -> node(ctx, n -> n.withKind((NodeKind) v))))
