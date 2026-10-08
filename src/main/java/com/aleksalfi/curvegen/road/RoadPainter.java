@@ -98,15 +98,16 @@ public final class RoadPainter {
             double s = c.along();
             RoadClass cls = chain.classAt(s);
             int dash = centreDash(cls), gap = 2 * dash, ldash = laneDash(cls), lgap = 2 * ldash;
+            double ds = s + chain.profile().dashOffset();
             Surface surface = switch (kind) {
                 case SIDEWALK -> Surface.SIDEWALK;
                 case CURB -> Surface.CURB;
                 case SHOULDER, AUX, LANE -> Surface.ASPHALT;
                 case EDGE -> Surface.LINE;
                 case AUX_LINE -> (s % (3 * ldash)) < 2 * ldash ? Surface.LINE : Surface.ASPHALT; // long dashes, short gaps
-                case LANE_LINE -> (s % (ldash + lgap)) < ldash ? Surface.LINE : Surface.ASPHALT;
+                case LANE_LINE -> (ds % (ldash + lgap)) < ldash ? Surface.LINE : Surface.ASPHALT;
                 case CENTRE -> chain.oneWay()
-                        ? (chain.widthsAt(s)[LaneProfile.CENTRE_INDEX] > 1.5 ? Surface.ASPHALT : (s % (ldash + lgap)) < ldash ? Surface.LINE : Surface.ASPHALT)
+                        ? (chain.widthsAt(s)[LaneProfile.CENTRE_INDEX] > 1.5 ? Surface.ASPHALT : (ds % (ldash + lgap)) < ldash ? Surface.LINE : Surface.ASPHALT)
                         : centreSolid(chain, s, total) || (s % (dash + gap)) < dash ? Surface.LINE : Surface.ASPHALT;
             };
             // Zebra crossing on a plain node: stripes across the carriageway.

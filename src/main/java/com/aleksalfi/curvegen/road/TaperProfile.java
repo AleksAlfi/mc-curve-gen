@@ -32,6 +32,11 @@ public final class TaperProfile implements Rasterizer.WidthProfile {
     public record Blend(double edge, double full, double taper, double[] target) {}
 
     private final List<Blend> blends = new ArrayList<>();
+    /** Added to along-positions when phasing dashed lines, so markings run on across forks. */
+    private double dashOffset;
+
+    public double dashOffset() { return dashOffset; }
+    public void setDashOffset(double v) { dashOffset = v; }
 
     public void addBlend(Blend b) { blends.add(b); }
 

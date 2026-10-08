@@ -156,7 +156,25 @@ public final class RoadGeometry {
             RoadChain chain = walk(net, start, link, usedLinks, chainId);
             if (chain != null) { out.add(chain); chainId++; }
         }
+        alignForkDashes(net, out);
         return out;
+    }
+
+    /** Lane-line dashes run on through a fork or join: the downstream chains continue the upstream phase. */
+    private static void alignForkDashes(RoadNetwork net, List<RoadChain> chains) {
+        for (RoadNode n : net.nodes().values()) {
+            Fork f = Fork.at(net, n);
+            if (f == null) continue;
+            RoadChain trunk = null, r = null;
+            List<RoadChain> branches = new ArrayList<>();
+            for (RoadChain c : chains) {
+                if (c.linkIds().contains(f.trunk().id())) trunk = c;
+                if (c.linkIds().contains(f.right().id()) || c.linkIds().contains(f.left().id())) branches.add(c);
+            }
+            if (trunk == null || branches.isEmpty()) continue;
+            if (f.diverge()) for (RoadChain b : branches) b.profile().setDashOffset(trunk.profile().dashOffset() + trunk.length());
+            else trunk.profile().setDashOffset(branches.get(0).profile().dashOffset() + branches.get(0).length());
+        }
     }
 
     private static RoadChain walk(RoadNetwork net, RoadNode start, RoadLink first, Set<Integer> usedLinks, int chainId) {
@@ -256,13 +274,16 @@ public final class RoadGeometry {
                 endStraight *= f;
             }
         }
+        // Fork branches run side by side with the other branch, parallel to the trunk, before they diverge.
+        if (forkBranchStart) startStraight = parallelRun(startPos, nodes.get(1).xz(), cls);
+        if (forkBranchEnd) endStraight = parallelRun(endPos, nodes.get(nodes.size() - 2).xz(), cls);
         if (loop) keys.add(new Key(first.xz().lerp(nodes.get(1).xz(), 0.5), d0, (first.y() + nodes.get(1).y()) / 2));
         else keys.add(new Key(startPos, d0, first.y()));
         keyNode.add(0);
         arcAfterKey.add(null);
         if (startStraight > 0) {
             // On the core's plane (flat, or tilted on a hill): the arm's own climb starts beyond the box.
-            Vec2 edge = first.xz().add(d0.scale(startStraight));
+            Vec2 edge = startPos.add(d0.scale(startStraight));
             keys.add(new Key(edge, d0, coreHeightAt(net, first, edge)));
             keyNode.add(-1);
             arcAfterKey.add(null);
@@ -305,7 +326,7 @@ public final class RoadGeometry {
             if (node.zebra()) zebras.add(null);
         }
         if (endStraight > 0) {
-            Vec2 edge = last.xz().sub(dl.scale(endStraight));
+            Vec2 edge = endPos.sub(dl.scale(endStraight));
             keys.add(new Key(edge, dl, coreHeightAt(net, last, edge)));
             keyNode.add(-1);
             arcAfterKey.add(null);
@@ -559,9 +580,15 @@ public final class RoadGeometry {
         profile.addZone(from, to, w);
     }
 
+    /** How far a fork branch runs parallel beside its twin before curving away. */
+    static double parallelRun(Vec2 from, Vec2 next, RoadClass cls) {
+        double len = from.distanceTo(next);
+        return Math.min(Math.max(30, 4.0 * cls.laneWidth()), 0.45 * len);
+    }
+
     /** The trunk of a fork widens to both branches' lanes over the last stretch before (or first after) the node. */
     private static void forkBlend(TaperProfile profile, Fork f, double length, boolean atStart) {
-        double full = Math.min(2.0 * f.trunkClass().laneWidth() + 10, 0.3 * length);
+        double full = Math.min(Math.max(30, 4.0 * f.trunkClass().laneWidth()), 0.4 * length);
         double taper = Math.min(Merge.LANE_TAPER, 0.25 * length);
         if (atStart) profile.addBlend(new TaperProfile.Blend(0, full, full + taper, f.trunkTarget()));
         else profile.addBlend(new TaperProfile.Blend(length, length - full, length - full - taper, f.trunkTarget()));

@@ -899,9 +899,16 @@ class RoadTest {
             if (c.linkIds().contains(2)) assertEquals(9.5, c.line().z[0], 0.6, "south branch starts at +9");
             if (c.linkIds().contains(3)) assertEquals(-8.5, c.line().z[0], 0.6, "north branch starts at -9");
         }
+        // The branches run parallel beside each other for a while before diverging.
+        for (RoadChain c : chains) if (c.linkIds().contains(2)) {
+            int i = 0;
+            while (c.line().s[i] < 25) i++;
+            assertEquals(9.5, c.line().z[i], 0.6, "still parallel 25 blocks after the node");
+            assertEquals(trunk.length(), c.profile().dashOffset(), 1e-6, "dash phase continues from the trunk");
+        }
         CellMap cells = RoadPainter.paint(net, chains);
         int lines = 0;
-        for (int x = 10; x < 60; x++) for (int z = -10; z <= 10; z++) if (at(cells, x, z) == Surface.LINE) lines++;
+        for (int x = 30; x < 110; x++) for (int z = -16; z <= 16; z++) if (at(cells, x, z) == Surface.LINE) lines++;
         assertTrue(lines > 20, "hatched nose between the branches: " + lines);
     }
 
