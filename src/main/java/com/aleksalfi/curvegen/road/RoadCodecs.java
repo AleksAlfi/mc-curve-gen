@@ -39,6 +39,7 @@ public final class RoadCodecs {
             Codec.INT.optionalFieldOf("sidewalk_width", 0).forGetter(RoadClass::sidewalkWidth),
             Codec.INT.optionalFieldOf("curb_layers", 3).forGetter(RoadClass::curbLayers),
             Codec.BOOL.optionalFieldOf("edge_lines", true).forGetter(RoadClass::edgeLines),
+            Codec.BOOL.optionalFieldOf("smooth_edges", false).forGetter(RoadClass::smoothEdges),
             Codec.STRING.optionalFieldOf("asphalt", "minecraft:gray_concrete").forGetter(RoadClass::asphalt),
             Codec.STRING.optionalFieldOf("line", "minecraft:white_concrete").forGetter(RoadClass::line),
             Codec.STRING.optionalFieldOf("curb", "minecraft:stone_bricks").forGetter(RoadClass::curb),

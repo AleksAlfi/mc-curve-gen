@@ -44,6 +44,10 @@ public class CurveGen {
 
     /** Left-clicking with the planner undoes the last point instead of breaking the block. */
     private static void onLeftClickBlock(PlayerInteractEvent.LeftClickBlock event) {
+        if (event.getEntity().getMainHandItem().getItem() instanceof com.aleksalfi.curvegen.item.RoadPlannerItem) {
+            event.setCanceled(true); // the client handles road planner left-clicks itself
+            return;
+        }
         if (!(event.getEntity().getMainHandItem().getItem() instanceof CurvePlannerItem)) return;
         if (event.getAction() != PlayerInteractEvent.LeftClickBlock.Action.START
                 && event.getAction() != PlayerInteractEvent.LeftClickBlock.Action.ABORT

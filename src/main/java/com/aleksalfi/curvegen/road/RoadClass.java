@@ -8,9 +8,10 @@ package com.aleksalfi.curvegen.road;
  * @param sidewalkWidth    0 for none, otherwise the sidewalk strip beside the 1-block curb
  * @param curbLayers       height of curb and sidewalk in copycat layers (eighths), 0 = flat
  * @param edgeLines        solid white line along both carriageway edges
+ * @param smoothEdges      sideways copycat layers on partially covered edge columns (off: full blocks, 50% rule)
  */
 public record RoadClass(String id, String name, int laneWidth, int lanesPerDirection, int sidewalkWidth, int curbLayers,
-                        boolean edgeLines, String asphalt, String line, String curb, String sidewalk) {
+                        boolean edgeLines, boolean smoothEdges, String asphalt, String line, String curb, String sidewalk) {
 
     public RoadClass {
         laneWidth = Math.max(2, Math.min(32, laneWidth));
@@ -20,17 +21,17 @@ public record RoadClass(String id, String name, int laneWidth, int lanesPerDirec
     }
 
     public static RoadClass street() {
-        return new RoadClass("street", "Street", 6, 1, 3, 3, false,
+        return new RoadClass("street", "Street", 6, 1, 3, 3, false, false,
                 "minecraft:gray_concrete", "minecraft:white_concrete", "minecraft:stone_bricks", "minecraft:smooth_stone");
     }
 
     public static RoadClass mainRoad() {
-        return new RoadClass("main", "Main road", 7, 1, 3, 3, true,
+        return new RoadClass("main", "Main road", 7, 1, 3, 3, true, false,
                 "minecraft:gray_concrete", "minecraft:white_concrete", "minecraft:stone_bricks", "minecraft:smooth_stone");
     }
 
     public static RoadClass highway() {
-        return new RoadClass("highway", "Highway", 8, 2, 0, 0, true,
+        return new RoadClass("highway", "Highway", 8, 2, 0, 0, true, false,
                 "minecraft:gray_concrete", "minecraft:white_concrete", "minecraft:stone_bricks", "minecraft:smooth_stone");
     }
 
@@ -49,15 +50,16 @@ public record RoadClass(String id, String name, int laneWidth, int lanesPerDirec
     /** Default curb radius at junction corners. */
     public double cornerRadius() { return laneWidth; }
 
-    public RoadClass withId(String v) { return new RoadClass(v, name, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, asphalt, line, curb, sidewalk); }
-    public RoadClass withName(String v) { return new RoadClass(id, v, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, asphalt, line, curb, sidewalk); }
-    public RoadClass withLaneWidth(int v) { return new RoadClass(id, name, v, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, asphalt, line, curb, sidewalk); }
-    public RoadClass withLanesPerDirection(int v) { return new RoadClass(id, name, laneWidth, v, sidewalkWidth, curbLayers, edgeLines, asphalt, line, curb, sidewalk); }
-    public RoadClass withSidewalkWidth(int v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, v, curbLayers, edgeLines, asphalt, line, curb, sidewalk); }
-    public RoadClass withCurbLayers(int v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, sidewalkWidth, v, edgeLines, asphalt, line, curb, sidewalk); }
-    public RoadClass withEdgeLines(boolean v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, v, asphalt, line, curb, sidewalk); }
-    public RoadClass withAsphalt(String v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, v, line, curb, sidewalk); }
-    public RoadClass withLine(String v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, asphalt, v, curb, sidewalk); }
-    public RoadClass withCurb(String v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, asphalt, line, v, sidewalk); }
-    public RoadClass withSidewalk(String v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, asphalt, line, curb, v); }
+    public RoadClass withId(String v) { return new RoadClass(v, name, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, smoothEdges, asphalt, line, curb, sidewalk); }
+    public RoadClass withName(String v) { return new RoadClass(id, v, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, smoothEdges, asphalt, line, curb, sidewalk); }
+    public RoadClass withLaneWidth(int v) { return new RoadClass(id, name, v, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, smoothEdges, asphalt, line, curb, sidewalk); }
+    public RoadClass withLanesPerDirection(int v) { return new RoadClass(id, name, laneWidth, v, sidewalkWidth, curbLayers, edgeLines, smoothEdges, asphalt, line, curb, sidewalk); }
+    public RoadClass withSidewalkWidth(int v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, v, curbLayers, edgeLines, smoothEdges, asphalt, line, curb, sidewalk); }
+    public RoadClass withCurbLayers(int v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, sidewalkWidth, v, edgeLines, smoothEdges, asphalt, line, curb, sidewalk); }
+    public RoadClass withEdgeLines(boolean v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, v, smoothEdges, asphalt, line, curb, sidewalk); }
+    public RoadClass withSmoothEdges(boolean v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, v, asphalt, line, curb, sidewalk); }
+    public RoadClass withAsphalt(String v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, smoothEdges, v, line, curb, sidewalk); }
+    public RoadClass withLine(String v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, smoothEdges, asphalt, v, curb, sidewalk); }
+    public RoadClass withCurb(String v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, smoothEdges, asphalt, line, v, sidewalk); }
+    public RoadClass withSidewalk(String v) { return new RoadClass(id, name, laneWidth, lanesPerDirection, sidewalkWidth, curbLayers, edgeLines, smoothEdges, asphalt, line, curb, v); }
 }

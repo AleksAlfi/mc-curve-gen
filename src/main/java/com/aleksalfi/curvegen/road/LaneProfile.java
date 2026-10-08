@@ -27,6 +27,17 @@ public record LaneProfile(double[] widths, LaneKind[] kinds) {
         return new LaneProfile(widths, k.toArray(new LaneKind[0]));
     }
 
+    /** The lane at a signed lateral offset from the road centre (negative = left), or null outside the road. */
+    public LaneKind kindAt(double lateral) {
+        double x = lateral + totalWidth() / 2;
+        if (x < 0) return null;
+        for (int i = 0; i < widths.length; i++) {
+            if (x < widths[i]) return kinds[i];
+            x -= widths[i];
+        }
+        return null;
+    }
+
     public double totalWidth() {
         double t = 0;
         for (double v : widths) t += v;

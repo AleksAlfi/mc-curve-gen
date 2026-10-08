@@ -179,6 +179,27 @@ public record RoadNetwork(String name, Map<String, RoadClass> classes, Map<Integ
         return copy(classes, nodes, l, nextId, defaultClass);
     }
 
+    /**
+     * Splits a link at a point: the new node joins the two halves, which keep the class, and arm settings
+     * stored for the old link move to the half that touches the same node.
+     */
+    public RoadNetwork insertNode(int linkId, double x, double y, double z) {
+        RoadLink old = links.get(linkId);
+        if (old == null || nodes.size() >= MAX_NODES || links.size() + 1 > MAX_LINKS) return this;
+        int newId = nextId;
+        int la = nextLinkId, lb = nextLinkId + 1;
+        Map<Integer, RoadNode> n = new LinkedHashMap<>(nodes);
+        n.put(newId, RoadNode.at(newId, x, y, z));
+        Map<Integer, RoadLink> l = new LinkedHashMap<>(links);
+        l.remove(linkId);
+        l.put(la, new RoadLink(la, old.a(), newId, old.classId()));
+        l.put(lb, new RoadLink(lb, newId, old.b(), old.classId()));
+        RoadNode a = n.get(old.a()), b = n.get(old.b());
+        if (a != null && a.arms().containsKey(linkId)) n.put(a.id(), a.withoutArm(linkId).withArm(la, a.arm(linkId)));
+        if (b != null && b.arms().containsKey(linkId)) n.put(b.id(), b.withoutArm(linkId).withArm(lb, b.arm(linkId)));
+        return new RoadNetwork(name, classes, n, l, nextId + 1, nextLinkId + 2, defaultClass, owner, shares, playerNames, publicAccess);
+    }
+
     public RoadNetwork putClass(RoadClass c) {
         if (!classes.containsKey(c.id()) && classes.size() >= MAX_CLASSES) return this;
         Map<String, RoadClass> m = new LinkedHashMap<>(classes);

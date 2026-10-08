@@ -187,10 +187,15 @@ public class RoadNetworkScreen extends Screen implements RoadScreen {
         button(bx + 104, by, 52, Component.translatable("curvegen.gui.place"), b -> { ClientActions.sendRoad(RoadActionPayload.Action.PLACE); onClose(); });
         button(bx + 160, by, Math.max(60, panelW - 8 - (bx + 160)), Component.translatable("curvegen.gui.undo_place"), b -> ClientActions.sendRoad(RoadActionPayload.Action.UNDO_PLACE));
         button(8, by - row, 136, Component.translatable("curvegen.gui.deploy"), b -> ClientActions.sendRoad(RoadActionPayload.Action.DEPLOY_SCHEMATIC));
+        Checkbox snap = addRenderableWidget(Checkbox.builder(Component.translatable("curvegen.road.net.axis_snap"), font).pos(left + 150, top + by - row)
+                .selected(com.aleksalfi.curvegen.client.ClientConfig.axisSnap())
+                .onValueChange((cb, v) -> com.aleksalfi.curvegen.client.ClientConfig.setAxisSnap(v)).build());
+        snap.setTooltip(Tooltip.create(Component.translatable("curvegen.road.net.axis_snap_tip")));
+        statusX = 150 + snap.getWidth() + 8;
         statusY = by - row + 5;
     }
 
-    private int statusY;
+    private int statusX = 150, statusY;
 
     @Override
     public void onNetworkChanged() { needsRebuild = true; }
@@ -198,7 +203,7 @@ public class RoadNetworkScreen extends Screen implements RoadScreen {
     @Override
     public void tick() {
         super.tick();
-        if (needsRebuild) { needsRebuild = false; rebuildWidgets(); clearFocus(); }
+        if (needsRebuild) { needsRebuild = false; RoadScreen.rebuildKeepingFocus(this, this::rebuildWidgets); }
     }
 
     @Override
@@ -212,9 +217,9 @@ public class RoadNetworkScreen extends Screen implements RoadScreen {
         if (line.getString().isEmpty()) {
             line = stats.warnings().isEmpty()
                     ? Component.translatable("curvegen.road.net.stats", stats.blocks(), stats.layers()).withStyle(ChatFormatting.GRAY)
-                    : Component.literal(font.plainSubstrByWidth(stats.warnings().get(0), panelW - 160)).withStyle(ChatFormatting.GOLD);
+                    : Component.literal(font.plainSubstrByWidth(stats.warnings().get(0), panelW - statusX - 8)).withStyle(ChatFormatting.GOLD);
         }
-        g.drawString(font, line, left + 150, top + statusY, 0xFFFFFF, true);
+        g.drawString(font, line, left + statusX, top + statusY, 0xFFFFFF, true);
     }
 
     @Override

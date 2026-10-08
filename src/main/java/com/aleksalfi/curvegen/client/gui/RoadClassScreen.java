@@ -50,7 +50,7 @@ public class RoadClassScreen extends Screen implements RoadScreen {
                 int v = Integer.parseInt(s.trim());
                 boolean ok = v >= min && v <= max;
                 box.setTextColor(ok ? 0xE0E0E0 : 0xFF5555);
-                if (ok) onChange.accept(v);
+                if (ok && v != value) onChange.accept(v);
             } catch (NumberFormatException e) { box.setTextColor(0xFF5555); }
         });
         return addRenderableWidget(box);
@@ -74,7 +74,7 @@ public class RoadClassScreen extends Screen implements RoadScreen {
         EditBox name = new EditBox(font, left + 110, top + y, W - 118, 18, Component.empty());
         name.setMaxLength(32);
         name.setValue(c.name());
-        name.setResponder(s -> { if (!s.isBlank()) edit(x -> x.withName(s)); });
+        name.setResponder(s -> { if (!s.isBlank() && !s.equals(c.name())) edit(x -> x.withName(s)); });
         addRenderableWidget(name);
         y += 22;
         label(8, y + 5, 0xAAAAAA, Component.translatable("curvegen.road.class.lane_width"));
@@ -89,6 +89,9 @@ public class RoadClassScreen extends Screen implements RoadScreen {
         y += 22;
         addRenderableWidget(Checkbox.builder(Component.translatable("curvegen.road.class.edge_lines"), font).pos(left + 8, top + y).selected(c.edgeLines())
                 .onValueChange((cb, v) -> edit(x -> x.withEdgeLines(v))).build());
+        Checkbox smooth = addRenderableWidget(Checkbox.builder(Component.translatable("curvegen.road.class.smooth_edges"), font).pos(left + 160, top + y).selected(c.smoothEdges())
+                .onValueChange((cb, v) -> edit(x -> x.withSmoothEdges(v))).build());
+        smooth.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("curvegen.road.class.smooth_edges_tip")));
         y += 22;
         blockRowDirect(y, Component.translatable("curvegen.road.class.asphalt"), c.asphalt(), s -> edit(x -> x.withAsphalt(s)));
         y += 22;
@@ -115,7 +118,7 @@ public class RoadClassScreen extends Screen implements RoadScreen {
     @Override
     public void tick() {
         super.tick();
-        if (needsRebuild) { needsRebuild = false; rebuildWidgets(); clearFocus(); }
+        if (needsRebuild) { needsRebuild = false; RoadScreen.rebuildKeepingFocus(this, this::rebuildWidgets); }
     }
 
     @Override

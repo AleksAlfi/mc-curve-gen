@@ -3,7 +3,6 @@ package com.aleksalfi.curvegen.road;
 import com.aleksalfi.curvegen.geom.Rasterizer;
 import com.aleksalfi.curvegen.geom.Vec2;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -22,10 +21,33 @@ public final class RoadPainter {
         public double coverage;
         public double ox, oz;
         public int chainId;
+        /** Distance of the column from its chain's centre line (0 for junction and roundabout cells). */
+        public double lateral;
+        /** Position along its chain's centre line (0 for junction and roundabout cells). */
+        public double along;
 
         Cell(Surface surface, RoadClass cls, double height, double coverage, double ox, double oz, int chainId) {
-            this.surface = surface; this.cls = cls; this.height = height; this.coverage = coverage; this.ox = ox; this.oz = oz; this.chainId = chainId;
+            this(surface, cls, height, coverage, ox, oz, chainId, 0, 0);
         }
+
+        Cell(Surface surface, RoadClass cls, double height, double coverage, double ox, double oz, int chainId, double lateral, double along) {
+            this.surface = surface; this.cls = cls; this.height = height; this.coverage = coverage; this.ox = ox; this.oz = oz; this.chainId = chainId; this.lateral = lateral; this.along = along;
+        }
+
+        boolean carriageway() { return surface == Surface.ASPHALT || surface == Surface.LINE; }
+        boolean full() { return coverage >= 15.0 / 16; }
+    }
+
+    /**
+     * Where two roads overlap (arms meeting at a narrow angle, tight hairpins), the column belongs to the
+     * road whose centre line is nearest, except that a full column beats a partial edge column and a
+     * carriageway always beats a curb or sidewalk, so a sidewalk never cuts across lanes.
+     */
+    static boolean beats(Cell candidate, Cell existing) {
+        if (existing == null || existing.chainId == candidate.chainId) return true;
+        if (candidate.full() != existing.full()) return candidate.full();
+        if (candidate.carriageway() != existing.carriageway()) return candidate.carriageway();
+        return candidate.lateral <= existing.lateral;
     }
 
     public static long key(int x, int z) { return ((long) x << 32) ^ (z & 0xffffffffL); }
@@ -35,8 +57,8 @@ public final class RoadPainter {
     public static final int SUPERSAMPLE = 4;
     public static final long MAX_COLUMNS = 4_000_000L;
 
-    public static Map<Long, Cell> paint(RoadNetwork net, List<RoadChain> chains) {
-        Map<Long, Cell> cells = new HashMap<>();
+    public static CellMap paint(RoadNetwork net, List<RoadChain> chains) {
+        CellMap cells = new CellMap();
         for (RoadChain chain : chains) paintChain(chain, cells);
         for (RoadNode node : net.nodes().values()) {
             if (node.kind() == NodeKind.ROUNDABOUT) paintRoundabout(net, node, chains, cells);
@@ -52,7 +74,7 @@ public final class RoadPainter {
     static double approach(RoadClass c) { return 4.0 * c.laneWidth(); }
     static double zebraWidth(RoadClass c) { return Math.max(3, Math.round(c.laneWidth() / 2.0)); }
 
-    private static void paintChain(RoadChain chain, Map<Long, Cell> cells) {
+    private static void paintChain(RoadChain chain, CellMap cells) {
         RoadClass cls = chain.roadClass();
         LaneProfile profile = LaneProfile.of(cls);
         List<Rasterizer.Column> columns = Rasterizer.rasterize(chain.line(), profile.widths(), SUPERSAMPLE, MAX_COLUMNS);
@@ -79,7 +101,80 @@ public final class RoadPainter {
                     }
                 }
             }
-            cells.put(key(c.x(), c.z()), new Cell(surface, cls, c.height(), c.coverage(), c.outwardX(), c.outwardZ(), chain.id()));
+            long k = key(c.x(), c.z());
+            double height = c.height() + chain.crossSlopeAt(s) * c.lateral();
+            Cell cell = new Cell(surface, cls, height, c.coverage(), c.outwardX(), c.outwardZ(), chain.id(), Math.abs(c.lateral()), c.along());
+            if (beats(cell, cells.at(k, cell.height))) cells.put(k, cell);
+        }
+        for (RoadChain.Corner corner : chain.corners()) mitreInnerCorner(chain, profile, corner, cells);
+    }
+
+    /**
+     * A fillet whose radius is smaller than the road's half width has no inner arc for the outer lanes:
+     * the rasterized sidewalk folds over itself. Inside such a corner the lanes beyond the radius are
+     * repainted as the plain intersection of the two straight legs (a mitre), which is how a tight curb
+     * corner looks in reality.
+     */
+    private static void mitreInnerCorner(RoadChain chain, LaneProfile profile, RoadChain.Corner corner, CellMap cells) {
+        RoadClass cls = chain.roadClass();
+        double half = cls.halfTotal();
+        double r = corner.radius();
+        if (r >= half + 0.5) return;
+        Vec2 p = corner.node();
+        Vec2 n1 = corner.dIn().left(), n2 = corner.dOut().left();
+        double side1 = Math.signum(corner.centre().sub(p).dot(n1)), side2 = Math.signum(corner.centre().sub(p).dot(n2));
+        double reach = half + r + 2;
+        int minX = (int) Math.floor(p.x() - reach), maxX = (int) Math.ceil(p.x() + reach);
+        int minZ = (int) Math.floor(p.z() - reach), maxZ = (int) Math.ceil(p.z() + reach);
+        double y = chain.line().size > 0 ? RoadGeometry.heightAt(chain.line(), p) : 0;
+        // The curb corner is rounded like a junction corner: a circle of the class's corner radius tangent to
+        // both inner curb lines (the lines at halfCarriageway from each leg), on the inner side of the wedge.
+        double hc = cls.halfCarriageway(), rc = cls.cornerRadius();
+        Vec2 u1 = corner.dIn().scale(-1), u2 = corner.dOut(); // both pointing away from the node along the legs
+        double psi = Math.acos(Math.max(-1, Math.min(1, u1.dot(u2)))); // wedge angle between the legs
+        Vec2 bis = u1.add(u2).normalize();
+        Vec2 curbCorner = p.add(bis.scale(hc / Math.sin(psi / 2))); // where the two inner curb lines meet
+        Vec2 filletCentre = curbCorner.add(bis.scale(rc / Math.sin(psi / 2)));
+        double tangentLen = rc / Math.tan(psi / 2);
+        Vec2 ft1 = curbCorner.add(u1.scale(tangentLen)), ft2 = curbCorner.add(u2.scale(tangentLen));
+        boolean rounded = psi > Math.toRadians(5) && psi < Math.toRadians(175);
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                Vec2 q = new Vec2(x + 0.5, z + 0.5);
+                Vec2 rel = q.sub(p);
+                if (rel.length() > reach) continue;
+                double a1 = rel.dot(n1), a2 = rel.dot(n2);
+                if (a1 * side1 < 0 || a2 * side2 < 0) continue; // not in the inner wedge
+                // Distance to each straight leg (half-line ending at the node).
+                double s1 = rel.dot(corner.dIn()), s2 = rel.dot(corner.dOut());
+                double dl1 = s1 <= 0 ? Math.abs(a1) : Math.hypot(a1, s1);
+                double dl2 = s2 >= 0 ? Math.abs(a2) : Math.hypot(a2, s2);
+                double lateral = Math.min(dl1, dl2);
+                // Inside the corner triangle the curb follows the fillet circle: outside the circle is asphalt and
+                // just inside it the curb; deeper inside, the sidewalk keeps its straight outer edges.
+                if (rounded && Junction.inTriangle(q, curbCorner, ft1, ft2)) {
+                    double tri = hc + (rc - q.distanceTo(filletCentre));
+                    lateral = tri < hc + 1 ? tri : Math.max(lateral, hc + 1);
+                }
+                if (lateral < r - 0.5) continue; // the arc still rasterizes this part cleanly
+                long k = key(x, z);
+                Cell existing = cells.at(k, y);
+                LaneKind kind = profile.kindAt(lateral);
+                if (kind == null) {
+                    if (existing != null && existing.chainId == chain.id()) cells.remove(k, existing);
+                    continue;
+                }
+                Surface surface = switch (kind) {
+                    case SIDEWALK -> Surface.SIDEWALK;
+                    case CURB -> Surface.CURB;
+                    case EDGE -> Surface.LINE;
+                    default -> Surface.ASPHALT;
+                };
+                if (existing != null && existing.chainId != chain.id() && !beats(new Cell(surface, cls, y, 1, 0, 0, chain.id(), lateral, 0), existing)) continue;
+                if (surface == Surface.ASPHALT && existing != null && existing.chainId == chain.id() && existing.carriageway()) continue; // keep markings
+                double h = existing != null && existing.chainId == chain.id() ? existing.height : y;
+                cells.put(k, new Cell(surface, cls, h, 1, 0, 0, chain.id(), lateral, existing != null && existing.chainId == chain.id() ? existing.along : 0));
+            }
         }
     }
 
@@ -95,30 +190,38 @@ public final class RoadPainter {
 
     // ---- junctions -------------------------------------------------------------------------------------
 
-    private static int chainOfLink(List<RoadChain> chains, int linkId) {
-        for (RoadChain c : chains) if (c.linkIds().contains(linkId)) return c.id();
-        return -1;
-    }
-
-    private static boolean ownChain(Cell cell, List<RoadChain> chains, List<Junction.Arm> arms) {
+    /**
+     * Whether a cell is junk left by an arm's chain inside the node's core: it belongs to one of the arms'
+     * chains and lies within {@code core} of this node measured along that chain. Cells of the same chain
+     * further along (the start of a bend after the straight run) are kept.
+     */
+    private static boolean armJunk(Cell cell, List<RoadChain> chains, List<Junction.Arm> arms, int nodeId, double core) {
         if (cell == null) return false;
-        for (Junction.Arm a : arms) if (chainOfLink(chains, a.link().id()) == cell.chainId) return true;
+        for (Junction.Arm a : arms) {
+            for (RoadChain c : chains) {
+                if (c.id() != cell.chainId || !c.linkIds().contains(a.link().id())) continue;
+                double fromNode = Double.MAX_VALUE;
+                if (c.nodeIds().get(0) == nodeId) fromNode = cell.along;
+                if (c.nodeIds().get(c.nodeIds().size() - 1) == nodeId) fromNode = Math.min(fromNode, c.length() - cell.along);
+                return fromNode <= core + 0.5;
+            }
+        }
         return false;
     }
 
-    private static void paintJunction(RoadNetwork net, RoadNode node, List<RoadChain> chains, Map<Long, Cell> cells) {
+    private static void paintJunction(RoadNetwork net, RoadNode node, List<RoadChain> chains, CellMap cells) {
         Junction j = Junction.of(net, node);
         if (j.arms.size() < 3) return;
         double rp = j.paintRadius();
         int minX = (int) Math.floor(j.center.x() - rp), maxX = (int) Math.ceil(j.center.x() + rp);
         int minZ = (int) Math.floor(j.center.z() - rp), maxZ = (int) Math.ceil(j.center.z() + rp);
-        double y = node.y();
         for (int x = minX; x <= maxX; x++) {
             for (int z = minZ; z <= maxZ; z++) {
                 Vec2 q = new Vec2(x + 0.5, z + 0.5);
                 if (q.distanceTo(j.center) > rp) continue;
+                double y = j.heightAt(q);
                 long k = key(x, z);
-                Cell existing = cells.get(k);
+                Cell existing = cells.at(k, y);
                 Junction.Arm arm = j.armContaining(q, true);
                 Vec2 rel = q.sub(j.center);
                 if (arm != null) {
@@ -151,23 +254,23 @@ public final class RoadPainter {
                     }
                 }
                 if (surface == Surface.NONE) {
-                    if (ownChain(existing, chains, j.arms)) cells.remove(k);
+                    // Inside the box the arms' chains cross the core and leave junk between the arms; beyond it
+                    // their cells are their own straight strips (or the start of a bend) and must stay.
+                    if (armJunk(existing, chains, j.arms, node.id(), j.box)) cells.remove(k, existing);
                     continue;
                 }
-                double coverage = dist <= 0 ? 1 : 1;
-                cells.put(k, new Cell(surface, cls, y, coverage, 0, 0, -1));
+                cells.put(k, new Cell(surface, cls, y, 1, 0, 0, -1));
             }
         }
     }
 
     // ---- roundabouts -----------------------------------------------------------------------------------
 
-    private static void paintRoundabout(RoadNetwork net, RoadNode node, List<RoadChain> chains, Map<Long, Cell> cells) {
+    private static void paintRoundabout(RoadNetwork net, RoadNode node, List<RoadChain> chains, CellMap cells) {
         Roundabout r = Roundabout.of(net, node);
         double rp = r.paintRadius();
         int minX = (int) Math.floor(r.center.x() - rp), maxX = (int) Math.ceil(r.center.x() + rp);
         int minZ = (int) Math.floor(r.center.z() - rp), maxZ = (int) Math.ceil(r.center.z() + rp);
-        double y = node.y();
         RoadClass cls = r.ringClass;
         int ldash = laneDash(cls), lgap = 2 * ldash;
         for (int x = minX; x <= maxX; x++) {
@@ -175,8 +278,9 @@ public final class RoadPainter {
                 Vec2 q = new Vec2(x + 0.5, z + 0.5);
                 double rad = q.distanceTo(r.center);
                 if (rad > rp) continue;
+                double y = r.heightAt(q);
                 long k = key(x, z);
-                Cell existing = cells.get(k);
+                Cell existing = cells.at(k, y);
                 Junction.Arm arm = r.armContaining(q);
                 Vec2 rel = q.sub(r.center);
                 if (arm != null) {
@@ -215,7 +319,7 @@ public final class RoadPainter {
                     else surface = Surface.NONE;
                 }
                 if (surface == Surface.NONE) {
-                    if (ownChain(existing, chains, r.arms)) cells.remove(k);
+                    if (armJunk(existing, chains, r.arms, node.id(), r.flareEnd())) cells.remove(k, existing);
                     continue;
                 }
                 cells.put(k, new Cell(surface, cls, y, 1, 0, 0, -1));

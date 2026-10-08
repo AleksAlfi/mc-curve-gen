@@ -108,9 +108,52 @@ public final class RoadService {
             RoadPlannerItem.setState(planner, state.withSelected(edit.id()));
             return true;
         }
+        if (edit.op() == RoadEdit.Op.NODE_CLICK) return clickNode(player, planner, all, net, state, edit.id());
+        if (edit.op() == RoadEdit.Op.UNDO) {
+            if (!net.canEdit(uuid, op)) { msg(player, "curvegen.road.read_only"); return false; }
+            RoadNetwork restored = all.undo(net.name());
+            if (restored == null) { overlay(player, "curvegen.road.nothing_to_undo"); return false; }
+            if (!restored.nodes().containsKey(state.selectedNode())) RoadPlannerItem.setState(planner, state.withSelected(-1));
+            overlay(player, "curvegen.road.undone", restored.nodes().size(), restored.links().size());
+            broadcast(player.server, restored.name());
+            return true;
+        }
         if (!net.canEdit(uuid, op)) { msg(player, "curvegen.road.read_only"); return false; }
         RoadNetwork next = net;
         switch (edit.op()) {
+            case NODE_ADD -> {
+                if (edit.node().isEmpty() || !validPosition(player, edit.node().get())) return false;
+                RoadNode p = edit.node().get();
+                next = net.addNode(p.x(), p.y(), p.z());
+                if (next == net) { overlay(player, "curvegen.road.node_limit"); return false; }
+                int newId = next.nextId() - 1;
+                if (state.selectedNode() >= 0 && next.nodes().containsKey(state.selectedNode())) {
+                    next = next.addLink(state.selectedNode(), newId, next.defaultClass());
+                }
+                RoadPlannerItem.setState(planner, state.withSelected(newId));
+                overlay(player, "curvegen.road.node_added", newId, next.nodes().size());
+            }
+            case NODE_INSERT -> {
+                if (edit.node().isEmpty() || !validPosition(player, edit.node().get())) return false;
+                RoadLink link = net.links().get(edit.id());
+                if (link == null) return false;
+                RoadNode p = edit.node().get();
+                next = net.insertNode(link.id(), p.x(), p.y(), p.z());
+                if (next == net) { overlay(player, "curvegen.road.node_limit"); return false; }
+                int newId = next.nextId() - 1;
+                int sel = state.selectedNode();
+                if (sel >= 0 && !link.touches(sel) && next.nodes().containsKey(sel)) next = next.addLink(sel, newId, next.defaultClass());
+                RoadPlannerItem.setState(planner, state.withSelected(newId));
+                overlay(player, "curvegen.road.node_inserted", newId, link.id());
+            }
+            case NODE_MOVE -> {
+                if (edit.node().isEmpty() || !validPosition(player, edit.node().get())) return false;
+                RoadNode existing = net.nodes().get(edit.id());
+                if (existing == null) return false;
+                RoadNode p = edit.node().get();
+                next = net.putNode(existing.withPosition(p.x(), p.y(), p.z()));
+                overlay(player, "curvegen.road.node_moved", existing.id(), (int) Math.floor(p.x()), (int) p.y(), (int) Math.floor(p.z()));
+            }
             case NODE_UPDATE -> {
                 if (edit.node().isEmpty() || !net.nodes().containsKey(edit.id())) return false;
                 RoadNode incoming = edit.node().get();
@@ -151,46 +194,55 @@ public final class RoadService {
             }
             default -> {}
         }
-        if (next != net) {
-            all.put(next);
+        if (next != net && !next.equals(net)) {
+            if (edit.op() == RoadEdit.Op.SHARE || edit.op() == RoadEdit.Op.PUBLIC_ACCESS) all.put(next);
+            else all.putRemembering(net, next, mergeKey(edit));
             broadcast(player.server, next.name());
         }
         return true;
     }
 
-    /** Handles a (long-range) right-click: select, link or add a node. */
-    public static void click(ServerPlayer player, ItemStack planner, double x, double y, double z) {
-        RoadNetworks all = RoadNetworks.get(player.server);
-        RoadPlannerState state = RoadPlannerItem.getState(planner);
-        if (state.network().isEmpty()) { overlay(player, "curvegen.road.no_network"); return; }
-        RoadNetwork net = all.network(state.network());
-        if (net == null || !net.canView(player.getUUID(), operator(player))) { overlay(player, "curvegen.road.no_access"); return; }
-        RoadNode near = net.nearestNode(x, z, 1.5);
-        if (near != null) {
-            if (state.selectedNode() >= 0 && state.selectedNode() != near.id() && net.nodes().containsKey(state.selectedNode())) {
-                if (!net.canEdit(player.getUUID(), operator(player))) { overlay(player, "curvegen.road.read_only"); return; }
-                RoadLink existing = net.linkBetween(state.selectedNode(), near.id());
-                RoadNetwork next = existing != null ? net.removeLink(existing.id()) : net.addLink(state.selectedNode(), near.id(), net.defaultClass());
-                all.put(next);
-                overlay(player, existing != null ? "curvegen.road.unlinked" : "curvegen.road.linked", state.selectedNode(), near.id());
-            } else {
-                overlay(player, "curvegen.road.selected", near.id());
-            }
-            RoadPlannerItem.setState(planner, state.withSelected(near.id()));
-            broadcast(player.server, net.name());
-            return;
+    /** Field edits of one node, class or road made in quick succession share an undo step; structural edits never merge. */
+    private static String mergeKey(RoadEdit edit) {
+        return switch (edit.op()) {
+            case NODE_UPDATE -> "node:" + edit.id();
+            case CLASS_PUT -> "class:" + edit.roadClass().map(RoadClass::id).orElse("");
+            case LINK_CLASS -> "link:" + edit.id();
+            default -> null;
+        };
+    }
+
+    /** Right-click on a node: select it, connect it to the selected node, or deselect the selected node itself. */
+    private static boolean clickNode(ServerPlayer player, ItemStack planner, RoadNetworks all, RoadNetwork net, RoadPlannerState state, int id) {
+        RoadNode target = net.nodes().get(id);
+        if (target == null) return false;
+        int sel = state.selectedNode();
+        if (sel == id) {
+            RoadPlannerItem.setState(planner, state.withSelected(-1));
+            overlay(player, "curvegen.road.deselected");
+            return true;
         }
-        if (!net.canEdit(player.getUUID(), operator(player))) { overlay(player, "curvegen.road.read_only"); return; }
-        RoadNetwork next = net.addNode(x, y, z);
-        if (next == net) { overlay(player, "curvegen.road.node_limit"); return; }
-        int newId = next.nextId() - 1;
-        if (state.selectedNode() >= 0 && next.nodes().containsKey(state.selectedNode())) {
-            next = next.addLink(state.selectedNode(), newId, next.defaultClass());
+        if (sel >= 0 && net.nodes().containsKey(sel) && net.linkBetween(sel, id) == null) {
+            if (!net.canEdit(player.getUUID(), operator(player))) { overlay(player, "curvegen.road.read_only"); return false; }
+            RoadNetwork next = net.addLink(sel, id, net.defaultClass());
+            if (next == net) { overlay(player, "curvegen.road.link_limit"); return false; }
+            all.putRemembering(net, next);
+            overlay(player, "curvegen.road.linked", sel, id);
+        } else {
+            overlay(player, "curvegen.road.selected", id);
         }
-        all.put(next);
-        RoadPlannerItem.setState(planner, state.withSelected(newId));
-        overlay(player, "curvegen.road.node_added", newId, next.nodes().size());
-        broadcast(player.server, next.name());
+        RoadPlannerItem.setState(planner, state.withSelected(id));
+        broadcast(player.server, net.name());
+        return true;
+    }
+
+    /** Positions must be finite, inside the world and within long click range of the player. */
+    private static boolean validPosition(ServerPlayer player, RoadNode p) {
+        if (!Double.isFinite(p.x()) || !Double.isFinite(p.y()) || !Double.isFinite(p.z())) return false;
+        net.minecraft.world.level.Level level = player.level();
+        if (p.y() < level.getMinBuildHeight() || p.y() > level.getMaxBuildHeight() + 1) return false;
+        double dx = p.x() - player.getX(), dz = p.z() - player.getZ();
+        return dx * dx + dz * dz <= 320 * 320;
     }
 
     public static void place(ServerPlayer player, ItemStack planner) {

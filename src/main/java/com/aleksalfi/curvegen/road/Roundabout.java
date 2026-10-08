@@ -22,6 +22,8 @@ public final class Roundabout {
         double lw = 0;
         RoadClass cls = null;
         int sw = 0, curb = 0;
+        List<Vec2> dirs = new ArrayList<>();
+        List<Double> grades = new ArrayList<>();
         for (RoadLink link : net.linksOf(node.id())) {
             RoadNode other = net.nodes().get(link.other(node.id()));
             if (other == null) continue;
@@ -29,6 +31,8 @@ public final class Roundabout {
             if (u.lengthSq() < 1e-6) continue;
             RoadClass c = net.classOf(link);
             arms.add(new Junction.Arm(link, c, u.normalize(), node.arm(link.id())));
+            dirs.add(u.normalize());
+            grades.add((other.y() - node.y()) / u.length());
             if (c.laneWidth() > lw) { lw = c.laneWidth(); cls = c; }
             sw = Math.max(sw, c.sidewalkWidth());
             curb = Math.max(curb, c.curbLayers());
@@ -43,7 +47,14 @@ public final class Roundabout {
         this.cornerRadius = Math.max(2, Math.round(lw / 2.0));
         this.sidewalkWidth = sw;
         this.curbLayers = curb;
+        this.gradient = Junction.fitPlane(dirs, grades);
     }
+
+    /** Rise per block of the roundabout's plane (fitted to the arms' grades). */
+    public final Vec2 gradient;
+
+    /** Height of the roundabout plane at a point. */
+    public double heightAt(Vec2 q) { return node.y() + gradient.dot(q.sub(center)); }
 
     public static Roundabout of(RoadNetwork net, RoadNode node) { return new Roundabout(net, node); }
 

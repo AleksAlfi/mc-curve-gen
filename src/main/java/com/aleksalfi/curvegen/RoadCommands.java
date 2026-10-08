@@ -54,9 +54,14 @@ public final class RoadCommands {
                 .then(Commands.literal("delete").then(Commands.argument("name", StringArgumentType.word())
                         .executes(ctx -> edit(ctx, RoadEdit.of(RoadEdit.Op.NETWORK_DELETE, StringArgumentType.getString(ctx, "name"))))))
                 .then(Commands.literal("list").executes(RoadCommands::list))
+                .then(Commands.literal("undo").executes(ctx -> edit(ctx, RoadEdit.of(RoadEdit.Op.UNDO))))
                 .then(Commands.literal("info").executes(RoadCommands::info))
                 .then(Commands.literal("node")
                         .then(Commands.literal("add").then(Commands.argument("pos", BlockPosArgument.blockPos()).executes(RoadCommands::nodeAdd)))
+                        .then(Commands.literal("move").then(Commands.argument("id", IntegerArgumentType.integer(0))
+                                .then(Commands.argument("pos", BlockPosArgument.blockPos()).executes(RoadCommands::nodeMove))))
+                        .then(Commands.literal("insert").then(Commands.argument("link", IntegerArgumentType.integer(0))
+                                .then(Commands.argument("pos", BlockPosArgument.blockPos()).executes(RoadCommands::nodeInsert))))
                         .then(Commands.literal("select").then(Commands.argument("id", IntegerArgumentType.integer(-1))
                                 .executes(ctx -> edit(ctx, RoadEdit.of(RoadEdit.Op.NODE_SELECT, IntegerArgumentType.getInteger(ctx, "id"))))))
                         .then(Commands.literal("delete").then(Commands.argument("id", IntegerArgumentType.integer(0))
@@ -98,6 +103,7 @@ public final class RoadCommands {
                                 .then(Commands.literal("sidewalk").then(Commands.argument("n", IntegerArgumentType.integer(0, 16)).executes(ctx -> cls(ctx, c -> c.withSidewalkWidth(IntegerArgumentType.getInteger(ctx, "n"))))))
                                 .then(Commands.literal("curb").then(Commands.argument("n", IntegerArgumentType.integer(0, 7)).executes(ctx -> cls(ctx, c -> c.withCurbLayers(IntegerArgumentType.getInteger(ctx, "n"))))))
                                 .then(Commands.literal("edgelines").then(Commands.argument("on", BoolArgumentType.bool()).executes(ctx -> cls(ctx, c -> c.withEdgeLines(BoolArgumentType.getBool(ctx, "on"))))))
+                                .then(Commands.literal("smoothedges").then(Commands.argument("on", BoolArgumentType.bool()).executes(ctx -> cls(ctx, c -> c.withSmoothEdges(BoolArgumentType.getBool(ctx, "on"))))))
                                 .then(Commands.literal("name").then(Commands.argument("name", StringArgumentType.greedyString()).executes(ctx -> cls(ctx, c -> c.withName(StringArgumentType.getString(ctx, "name"))))))
                                 .then(Commands.literal("asphalt").then(Commands.argument("block", StringArgumentType.greedyString()).executes(ctx -> cls(ctx, c -> c.withAsphalt(StringArgumentType.getString(ctx, "block"))))))
                                 .then(Commands.literal("line").then(Commands.argument("block", StringArgumentType.greedyString()).executes(ctx -> cls(ctx, c -> c.withLine(StringArgumentType.getString(ctx, "block"))))))
@@ -157,8 +163,21 @@ public final class RoadCommands {
         ServerPlayer player = player(ctx);
         BlockPos pos = BlockPosArgument.getBlockPos(ctx, "pos");
         if (!player.serverLevel().isInWorldBounds(pos)) throw fail(Component.translatable("curvegen.cmd.out_of_world"));
-        RoadService.click(player, planner(ctx), pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5);
-        return 1;
+        return edit(ctx, RoadEdit.at(RoadEdit.Op.NODE_ADD, -1, pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5));
+    }
+
+    private static int nodeMove(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        ServerPlayer player = player(ctx);
+        BlockPos pos = BlockPosArgument.getBlockPos(ctx, "pos");
+        if (!player.serverLevel().isInWorldBounds(pos)) throw fail(Component.translatable("curvegen.cmd.out_of_world"));
+        return edit(ctx, RoadEdit.at(RoadEdit.Op.NODE_MOVE, IntegerArgumentType.getInteger(ctx, "id"), pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5));
+    }
+
+    private static int nodeInsert(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        ServerPlayer player = player(ctx);
+        BlockPos pos = BlockPosArgument.getBlockPos(ctx, "pos");
+        if (!player.serverLevel().isInWorldBounds(pos)) throw fail(Component.translatable("curvegen.cmd.out_of_world"));
+        return edit(ctx, RoadEdit.at(RoadEdit.Op.NODE_INSERT, IntegerArgumentType.getInteger(ctx, "link"), pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5));
     }
 
     private static int list(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {

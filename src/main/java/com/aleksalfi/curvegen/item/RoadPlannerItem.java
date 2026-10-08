@@ -2,11 +2,8 @@ package com.aleksalfi.curvegen.item;
 
 import com.aleksalfi.curvegen.ModRegistry;
 import com.aleksalfi.curvegen.road.RoadPlannerState;
-import com.aleksalfi.curvegen.road.RoadService;
 import net.minecraft.ChatFormatting;
-import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.InteractionResultHolder;
@@ -16,12 +13,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
 
 import java.util.List;
 
-/** Places and links road nodes; sneak + right-click opens the road screens. */
+/** Places, connects and edits road nodes; sneak + right-click opens the network screen. */
 public class RoadPlannerItem extends Item {
     public RoadPlannerItem(Properties properties) { super(properties); }
 
@@ -40,35 +35,23 @@ public class RoadPlannerItem extends Item {
         return null;
     }
 
-    @Override
-    public InteractionResult useOn(UseOnContext context) {
-        Player player = context.getPlayer();
-        if (player == null || player.isShiftKeyDown()) return InteractionResult.PASS;
-        if (player instanceof ServerPlayer sp) {
-            BlockPos target = context.getClickedPos().relative(context.getClickedFace());
-            RoadService.click(sp, context.getItemInHand(), target.getX() + 0.5, target.getY() + 1, target.getZ() + 0.5);
-        }
-        return InteractionResult.sidedSuccess(context.getLevel().isClientSide());
+    /**
+     * The planner that right-clicks act on: the main hand one, or the off-hand one when the main hand is empty.
+     * Clicks themselves are handled on the client (see {@code RoadInput}); the item never reacts to use().
+     */
+    public static ItemStack activeStack(Player player) {
+        ItemStack main = player.getMainHandItem();
+        if (main.getItem() instanceof RoadPlannerItem) return main;
+        if (main.isEmpty() && player.getOffhandItem().getItem() instanceof RoadPlannerItem) return player.getOffhandItem();
+        return null;
     }
 
     @Override
+    public InteractionResult useOn(UseOnContext context) { return InteractionResult.PASS; }
+
+    @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
-        ItemStack stack = player.getItemInHand(hand);
-        if (player.isShiftKeyDown()) {
-            if (level.isClientSide()) com.aleksalfi.curvegen.client.ClientHooks.openRoadPlanner(stack);
-            return InteractionResultHolder.sidedSuccess(stack, level.isClientSide());
-        }
-        if (player instanceof ServerPlayer sp) {
-            HitResult hit = CurvePlannerItem.pickLoaded(player, CurvePlannerItem.LONG_RANGE);
-            if (hit.getType() == HitResult.Type.BLOCK && hit instanceof BlockHitResult bhr) {
-                BlockPos target = bhr.getBlockPos().relative(bhr.getDirection());
-                RoadService.click(sp, stack, target.getX() + 0.5, target.getY() + 1, target.getZ() + 0.5);
-                return InteractionResultHolder.success(stack);
-            }
-            player.displayClientMessage(Component.translatable("curvegen.msg.no_target"), true);
-            return InteractionResultHolder.pass(stack);
-        }
-        return InteractionResultHolder.sidedSuccess(stack, true);
+        return InteractionResultHolder.pass(player.getItemInHand(hand));
     }
 
     @Override

@@ -24,7 +24,7 @@ used for lanes and as copycat material.
    compass). Creative players find it in the Tools tab.
 2. **Right-click** a block to add a point. The road's top block goes where a block would be placed
    on the face you clicked. Right-clicking into the distance works too (up to 256 blocks).
-3. **Left-click** undoes the last point. **Sneak + right-click** (or `V`) opens the options screen.
+3. **Left-click** undoes the last point. **Sneak + right-click** (or `N`) opens the options screen.
 4. The in-world preview shows every block as a translucent box (copycat layers are drawn with their
    real shape), the yellow line is the centre line and the small boxes are your points.
 5. In the options screen:
@@ -118,22 +118,39 @@ The **Road Planner** (paper + compass, stick + paper, black concrete bottom-left
 networks from nodes instead of single curves. Networks are saved in the world, by name, and belong to
 the player who created them.
 
-1. Sneak + right-click to open the network screen; create a network (or pick one shared with you).
-2. Right-click the ground to place a node. With a node selected, the next node you place is linked to it,
-   so you draw roads like a polyline. Right-click an existing node to select it; right-click another
-   node while one is selected to link (or unlink) them.
-3. Sneak + right-click a node (or use *Edit selected node*) for its settings:
+1. Sneak + right-click (or `N`) opens the network screen; create a network or pick one shared with you.
+   Right-clicking without a network opens it too.
+2. **Right-click** does one thing depending on what the crosshair points at (shown on the HUD and in the world):
+   * ground: place a node there. With a node selected the new node is joined to it and becomes the
+     selected one, so you draw a road like a polyline. **Axis snap** (network screen, on by default) puts
+     the node exactly north/south or east/west of the one it joins when it is within a block of that line.
+   * a node: select it; with another node selected, connect the two and continue from the clicked one;
+     clicking the selected node again finishes the chain. **Hold** right-click on a node to pick it up:
+     drag it with the crosshair and release to drop it (the ghost shows the roads following it).
+   * a road: insert a node into it (joined to the selected node, if any), e.g. to start a side road.
+     **Hold** on a road to insert the node and drag it straight away, which is the quickest way to bend a road.
+   The ghost line shows the centre line the road would get, green for placing, orange for connecting,
+   cyan while moving a node, red when you may not edit the network.
+3. **Left-click** a node or a road to open its settings; left-click the ground to finish the chain.
+   **Sneak + left-click** and hold a quarter second (a square fills around the crosshair) deletes the node or
+   road you aim at; sneak + left-click on the ground **undoes** the last change. The last 50 versions of every
+   network are kept in the world save, so undo survives restarts.
    * **Kind**: auto (plain pass-through, dead end, or junction when 3+ links meet) or **roundabout**
      (island radius, 1 or 2 ring lanes, give-way lines at every entry).
    * **Corner** for pass-through nodes: circular **fillet** with a radius, or **smooth** (spline-like).
    * **Zebra crossing** at a plain node, or per junction arm (between the stop line and the junction).
-   * Per arm: the link's **road class**, its **priority** (priority road: no line; give way: dashed line;
-     stop: solid line across the entry lanes) and a zebra.
+   * Per arm (node screen) or per end (road screen): **priority** (priority road: no line; give way: dashed
+     line; stop: solid line across the entry lanes) and a zebra; the road's **class** from either screen.
+   * **Move…** in the node screen does the same without holding: the next right-click drops the node (left-click cancels).
 4. **Road classes** (per network, editable, three by default): lane width (6 / 7 / 8 blocks, sized for
    Create Aeronautics vehicles), lanes per direction, sidewalk width, curb height (copycat layers),
-   solid edge lines, and the blocks for asphalt, lines, curb and sidewalk. New links use the class marked
+   solid edge lines, smooth edges (sideways copycat layers on the outer edge, off by default; ramps and
+   curbs use upward layers regardless), and the blocks for asphalt, lines, curb and sidewalk. New links use the class marked
    ★; change a link's class from either end node.
-5. Export, Place, Undo and Deploy work exactly like the curve planner; the preview shows the whole network.
+5. Heights: a road follows a smooth vertical curve between its nodes, so grades change gradually. A junction or
+   roundabout sits on a plane that follows the through road's grade up to a 10 % tilt; side roads are level
+   through the box and banked at most 10 % to meet it. Grades along a road (ramps) are not limited.
+6. Export, Place, Undo and Deploy work exactly like the curve planner; the preview shows the whole network.
 
 Markings follow simplified EU practice for right-hand traffic: dashed centre line that becomes solid
 in tight bends and on the approach to junctions and roundabouts, dashed lane lines between lanes of the
@@ -144,9 +161,10 @@ entry lanes, zebra stripes 1 block wide, rounded curb corners at every junction.
 (*view* or *edit*), remove a share, or open it to everyone (*Everyone: view / edit*). Operators can see
 and edit every network. Commands: `/roadgen share <player> <view|edit|none>`, `/roadgen public <none|view|edit>`.
 
-`/roadgen` mirrors the whole tool: `create`, `select`, `list`, `info`, `delete`, `node add <pos>`,
-`node select|delete|kind|corner|radius|roundabout|zebra`, `arm <link> priority|zebra`, `link <a> <b>`,
-`linkclass <link> <class>`, `class add|remove|default|set …`, `place`, `undoplace`, `deploy`.
+`/roadgen` mirrors the whole tool: `create`, `select`, `list`, `info`, `delete`, `undo`, `node add <pos>`,
+`node move <id> <pos>`, `node insert <link> <pos>`, `node select|delete|kind|corner|radius|roundabout|zebra`,
+`arm <link> priority|zebra`, `link <a> <b>`, `linkclass <link> <class>`, `class add|remove|default|set …`,
+`place`, `undoplace`, `deploy`.
 
 ## Building
 

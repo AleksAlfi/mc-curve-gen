@@ -26,7 +26,7 @@ public final class RoadCompiler {
             blocks.warn("Road network is too long (" + (long) total + " blocks of road). Split it into several networks.");
         } else {
             try {
-                Map<Long, RoadPainter.Cell> cells = RoadPainter.paint(network, chains);
+                CellMap cells = RoadPainter.paint(network, chains);
                 blocks = RoadAssembler.assemble(cells, level);
             } catch (Rasterizer.PlanTooLargeException e) {
                 blocks = new BlockPlan();

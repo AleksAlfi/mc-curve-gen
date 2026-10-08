@@ -17,6 +17,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -61,7 +62,7 @@ public class RoadNodeScreen extends Screen implements RoadScreen {
                 double v = Double.parseDouble(s.trim());
                 boolean ok = Double.isFinite(v) && v >= min && v <= max;
                 box.setTextColor(ok ? 0xE0E0E0 : 0xFF5555);
-                if (ok) onChange.accept(v);
+                if (ok && v != value) onChange.accept(v);
             } catch (NumberFormatException e) { box.setTextColor(0xFF5555); }
         });
         return addRenderableWidget(box);
@@ -73,7 +74,7 @@ public class RoadNodeScreen extends Screen implements RoadScreen {
         RoadNetwork net = net();
         RoadNode n = node();
         List<RoadLink> links = net == null || n == null ? List.of() : net.linksOf(nodeId);
-        panelH = Math.min(height, 150 + 22 * Math.max(1, links.size()));
+        panelH = Math.min(height, 164 + 22 * Math.max(1, links.size()));
         left = Math.max(0, (width - W) / 2);
         top = Math.max(0, (height - panelH) / 2);
         if (net == null || n == null) {
@@ -97,7 +98,20 @@ public class RoadNodeScreen extends Screen implements RoadScreen {
             label(252, y + 5, 0xAAAAAA, Component.translatable("curvegen.road.node.fillet"));
             numberBox(300, y, 44, n.filletRadius(), 0, 256, v -> edit(x -> x.withFilletRadius(v)));
         }
-        y += 22;
+        y += 20;
+        if (n.kind() != NodeKind.ROUNDABOUT) {
+            if (!com.aleksalfi.curvegen.road.RoadGeometry.passThrough(net, n)) {
+                label(8, y, 0x888888, Component.translatable("curvegen.road.node.corner_na"));
+            } else if (n.corner() == com.aleksalfi.curvegen.road.CornerStyle.SMOOTH) {
+                label(8, y, 0x888888, Component.translatable("curvegen.road.node.corner_smooth"));
+            } else {
+                double eff = com.aleksalfi.curvegen.road.RoadGeometry.effectiveFilletRadius(net, n);
+                if (eff < 0) label(8, y, 0x888888, Component.translatable("curvegen.road.node.corner_straight"));
+                else if (eff < n.filletRadius() - 0.05) label(8, y, 0xFFAA00, Component.translatable("curvegen.road.node.corner_limited", String.format(Locale.ROOT, "%.1f", eff)));
+                else label(8, y, 0x888888, Component.translatable("curvegen.road.node.corner_ok", String.format(Locale.ROOT, "%.1f", eff)));
+            }
+            y += 12;
+        }
         addRenderableWidget(Checkbox.builder(Component.translatable("curvegen.road.node.zebra"), font).pos(left + 8, top + y).selected(n.zebra())
                 .onValueChange((cb, v) -> edit(x -> x.withZebra(v))).build());
         y += 22;
@@ -123,8 +137,10 @@ public class RoadNodeScreen extends Screen implements RoadScreen {
         }
         if (links.isEmpty()) { label(8, y + 5, 0x888888, Component.translatable("curvegen.road.node.no_arms")); y += 22; }
         y = panelH - 26;
-        button(8, y, 100, Component.translatable("curvegen.road.node.delete"), b -> { ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.NODE_DELETE, nodeId)); onClose(); });
-        button(112, y, 100, Component.translatable("curvegen.road.node.deselect"), b -> { ClientActions.sendRoad(RoadActionPayload.Action.DESELECT); onClose(); });
+        button(8, y, 80, Component.translatable("curvegen.road.node.delete"), b -> { ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.NODE_DELETE, nodeId)); onClose(); });
+        Button move = button(92, y, 70, Component.translatable("curvegen.road.node.move"), b -> { com.aleksalfi.curvegen.client.RoadAim.movingNode = nodeId; onClose(); });
+        move.setTooltip(Tooltip.create(Component.translatable("curvegen.road.node.move_tip")));
+        button(166, y, 80, Component.translatable("curvegen.road.node.deselect"), b -> { ClientActions.sendRoad(RoadActionPayload.Action.DESELECT); onClose(); });
         button(W - 8 - 120, y, 120, Component.translatable("curvegen.road.node.network_screen"), b -> Minecraft.getInstance().setScreen(new RoadNetworkScreen()));
     }
 
@@ -134,7 +150,7 @@ public class RoadNodeScreen extends Screen implements RoadScreen {
     @Override
     public void tick() {
         super.tick();
-        if (needsRebuild) { needsRebuild = false; rebuildWidgets(); clearFocus(); }
+        if (needsRebuild) { needsRebuild = false; RoadScreen.rebuildKeepingFocus(this, this::rebuildWidgets); }
     }
 
     @Override

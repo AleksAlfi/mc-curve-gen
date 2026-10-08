@@ -21,11 +21,11 @@ public final class RoadAssembler {
     private record Palette(BlockState asphalt, BlockState line, BlockState curb, BlockState sidewalk,
                            BlockState curbMat, BlockState sidewalkMat, BlockState asphaltMat, BlockState lineMat) {}
 
-    public static BlockPlan assemble(Map<Long, RoadPainter.Cell> cells, BlockGetter level) {
+    public static BlockPlan assemble(CellMap cells, BlockGetter level) {
         BlockPlan out = new BlockPlan();
         boolean layers = CopycatSupport.available();
         Map<String, Palette> palettes = new HashMap<>();
-        for (Map.Entry<Long, RoadPainter.Cell> e : cells.entrySet()) {
+        for (Map.Entry<Long, RoadPainter.Cell> e : cells.entries()) {
             if (out.size() >= PlanLimits.MAX_PLAN_BLOCKS) {
                 out.warn("Road network has more than " + PlanLimits.MAX_PLAN_BLOCKS + " blocks; the rest was skipped.");
                 break;
@@ -55,7 +55,7 @@ public final class RoadAssembler {
             boolean full = c.coverage >= 15.0 / 16;
             if (!full) {
                 int side = (int) Math.round(c.coverage * 8);
-                if (layers && material != null && side > 0 && side < 8) {
+                if (c.cls.smoothEdges() && layers && material != null && side > 0 && side < 8) {
                     Direction facing = facing(c.ox, c.oz);
                     out.put(new BlockPos(x, top - 1, z), new PlannedBlock(CopycatSupport.layer(facing, side), CopycatSupport.materialNbt(material), material));
                     continue; // no raised layer on a partial edge column

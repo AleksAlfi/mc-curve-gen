@@ -15,16 +15,19 @@ public final class Junction {
 
     /** Rounded corner between two adjacent arms: triangle (p, t1, t2) outside the circle (f, r) is asphalt. */
     public record Fillet(Vec2 p, Vec2 t1, Vec2 t2, Vec2 f, double r) {
-        boolean inTriangle(Vec2 q) {
-            return sameSide(q, p, t1, t2) && sameSide(q, t1, t2, p) && sameSide(q, t2, p, t1);
-        }
+        boolean inTriangle(Vec2 q) { return Junction.inTriangle(q, p, t1, t2); }
 
-        private static boolean sameSide(Vec2 q, Vec2 a, Vec2 b, Vec2 ref) {
-            Vec2 ab = b.sub(a);
-            double cq = ab.x() * (q.z() - a.z()) - ab.z() * (q.x() - a.x());
-            double cr = ab.x() * (ref.z() - a.z()) - ab.z() * (ref.x() - a.x());
-            return cq * cr >= -1e-9;
-        }
+    }
+
+    public static boolean inTriangle(Vec2 q, Vec2 a, Vec2 b, Vec2 c) {
+        return sameSide(q, a, b, c) && sameSide(q, b, c, a) && sameSide(q, c, a, b);
+    }
+
+    private static boolean sameSide(Vec2 q, Vec2 a, Vec2 b, Vec2 ref) {
+        Vec2 ab = b.sub(a);
+        double cq = ab.x() * (q.z() - a.z()) - ab.z() * (q.x() - a.x());
+        double cr = ab.x() * (ref.z() - a.z()) - ab.z() * (ref.x() - a.x());
+        return cq * cr >= -1e-9;
     }
 
     public final RoadNode node;
@@ -34,12 +37,19 @@ public final class Junction {
     public final double cornerRadius;
     public final double box;
     public final double maxHalfTotal;
+    public final double maxHalfCarriageway;
     public final double zebraWidth;
+    /** Steepest tilt of a junction or roundabout core and of any road's cross slope: 10%. Grades along a road are not capped. */
+    public static final double MAX_TILT = 0.10;
+    /** Rise per block of the core plane (fit of the through road's grade, capped at {@link #MAX_TILT}). */
+    public final Vec2 gradient;
 
     private Junction(RoadNetwork net, RoadNode node) {
         this.node = node;
         this.center = node.xz();
-        double r = 0, maxHalf = 0, maxLane = 0;
+        double r = 0, maxHalf = 0, maxLane = 0, maxCarriage = 0;
+        List<Vec2> dirs = new ArrayList<>();
+        List<Double> grades = new ArrayList<>();
         for (RoadLink link : net.linksOf(node.id())) {
             RoadNode other = net.nodes().get(link.other(node.id()));
             if (other == null) continue;
@@ -47,15 +57,20 @@ public final class Junction {
             if (u.lengthSq() < 1e-6) continue;
             RoadClass cls = net.classOf(link);
             arms.add(new Arm(link, cls, u.normalize(), node.arm(link.id())));
+            dirs.add(u.normalize());
+            grades.add((other.y() - node.y()) / u.length());
             r = Math.max(r, cls.cornerRadius());
             maxHalf = Math.max(maxHalf, cls.halfTotal());
+            maxCarriage = Math.max(maxCarriage, cls.halfCarriageway());
             maxLane = Math.max(maxLane, cls.laneWidth());
         }
         arms.sort(Comparator.comparingDouble(a -> a.u().angle()));
         this.cornerRadius = r;
         this.maxHalfTotal = maxHalf;
+        this.maxHalfCarriageway = maxCarriage;
         this.box = maxHalf + r + 1;
         this.zebraWidth = Math.max(3, Math.round(maxLane / 2.0));
+        this.gradient = fitPlane(dirs, grades);
         for (int i = 0; i < arms.size(); i++) {
             Fillet f = fillet(arms.get(i), arms.get((i + 1) % arms.size()));
             if (f != null) fillets.add(f);
@@ -64,10 +79,43 @@ public final class Junction {
 
     public static Junction of(RoadNetwork net, RoadNode node) { return new Junction(net, node); }
 
+    /** Height of the core plane at a point. */
+    public double heightAt(Vec2 q) { return node.y() + gradient.dot(q.sub(center)); }
+
+    /**
+     * The grade of the core plane. Only <em>through</em> roads count: arms that continue on the far side of
+     * the node (within 30° of opposite) are fitted by least squares, so a road crossing a hillside keeps its
+     * grade; side roads and ramps are graded to meet that plane beyond the box. Without a through road the
+     * core is level. The tilt is capped at {@link #MAX_TILT} so a side road never has to bank much to meet it.
+     */
+    static Vec2 fitPlane(List<Vec2> dirs, List<Double> grades) {
+        boolean[] through = new boolean[dirs.size()];
+        for (int i = 0; i < dirs.size(); i++) {
+            for (int k = i + 1; k < dirs.size(); k++) {
+                if (dirs.get(i).dot(dirs.get(k)) < -0.866) { through[i] = true; through[k] = true; }
+            }
+        }
+        double axx = 1e-3, axz = 0, azz = 1e-3, bx = 0, bz = 0;
+        boolean any = false;
+        for (int i = 0; i < dirs.size(); i++) {
+            if (!through[i]) continue;
+            any = true;
+            Vec2 u = dirs.get(i);
+            double g = grades.get(i);
+            axx += u.x() * u.x(); axz += u.x() * u.z(); azz += u.z() * u.z();
+            bx += g * u.x(); bz += g * u.z();
+        }
+        if (!any) return Vec2.ZERO;
+        double det = axx * azz - axz * axz;
+        if (Math.abs(det) < 1e-12) return Vec2.ZERO;
+        Vec2 g = new Vec2((bx * azz - bz * axz) / det, (axx * bz - axz * bx) / det);
+        return g.length() > MAX_TILT ? g.normalize().scale(MAX_TILT) : g;
+    }
+
     public double box() { return box; }
 
-    /** Radius of the region this junction repaints. */
-    public double paintRadius() { return box + zebraWidth + 2; }
+    /** Radius of the region this junction repaints: the box plus the stop line just outside it. */
+    public double paintRadius() { return box + 2; }
 
     /** Fillet between arm a and the next arm b counter-clockwise (in angle order). */
     private Fillet fillet(Arm a, Arm b) {
@@ -102,7 +150,8 @@ public final class Junction {
     /** Signed distance from q to the junction asphalt (negative inside). */
     public double asphaltDistance(Vec2 q) {
         Vec2 rel = q.sub(center);
-        double best = Double.POSITIVE_INFINITY;
+        // A disc around the node closes the back of a junction whose arms all leave on one side.
+        double best = rel.length() - maxHalfCarriageway;
         for (Arm a : arms) {
             double s = rel.dot(a.u()), d = rel.dot(a.u().left());
             double dist = s >= 0 ? Math.abs(d) - a.halfCarriageway()
