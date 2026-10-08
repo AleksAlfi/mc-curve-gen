@@ -177,7 +177,7 @@ public record RoadNetwork(String name, Map<String, RoadClass> classes, Map<Integ
         RoadLink made = next.links().get(next.nextLinkId() - 1);
         LinkDir dir = LinkDir.TWO_WAY;
         if (ref.oneWay()) dir = ref.arrives(from) ? LinkDir.FORWARD : LinkDir.REVERSE; // new link is (from -> to)
-        made = made.withDir(dir).withSidewalk(ref.sidewalk()).withEdgeLines(ref.edgeLines()).withShoulder(ref.shoulder()).withLaneWidth(ref.laneWidth());
+        made = made.withDir(dir).withSidewalk(ref.sidewalk()).withEdgeLines(ref.edgeLines()).withShoulder(ref.shoulder()).withLaneWidth(ref.laneWidth()).withLanes(ref.lanes());
         return next.putLink(made);
     }
 

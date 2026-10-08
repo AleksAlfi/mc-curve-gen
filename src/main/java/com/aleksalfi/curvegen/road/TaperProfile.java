@@ -25,6 +25,16 @@ public final class TaperProfile implements Rasterizer.WidthProfile {
     private final List<double[]> zoneRanges = new ArrayList<>();
     private final List<double[]> zoneWidths = new ArrayList<>();
 
+    /**
+     * A local widening (or narrowing) to {@code target}: full target width between {@code edge} and {@code full},
+     * easing back to the normal cross-section between {@code full} and {@code taper}. Used for the trunk of a fork.
+     */
+    public record Blend(double edge, double full, double taper, double[] target) {}
+
+    private final List<Blend> blends = new ArrayList<>();
+
+    public void addBlend(Blend b) { blends.add(b); }
+
     public void addZone(double from, double to, double[] widths) {
         zoneRanges.add(new double[]{from, to});
         zoneWidths.add(widths);
@@ -89,6 +99,7 @@ public final class TaperProfile implements Rasterizer.WidthProfile {
         for (AuxLane a : auxLanes) extra = Math.max(extra, a.laneWidth() + 1);
         double mh = maxHalf + extra;
         for (double[] w : zoneWidths) mh = Math.max(mh, Rasterizer.half(w));
+        for (Blend b : blends) mh = Math.max(mh, Rasterizer.half(b.target()));
         return mh;
     }
 
@@ -100,6 +111,13 @@ public final class TaperProfile implements Rasterizer.WidthProfile {
     public double[] widthsAt(double s) {
         for (int i = 0; i < zoneRanges.size(); i++) if (s >= zoneRanges.get(i)[0] && s <= zoneRanges.get(i)[1]) return zoneWidths.get(i);
         double[] base = baseWidthsAt(s);
+        for (Blend b : blends) {
+            double lo = Math.min(b.edge(), b.taper()), hi = Math.max(b.edge(), b.taper());
+            if (s < lo || s > hi) continue;
+            boolean inFull = s >= Math.min(b.edge(), b.full()) && s <= Math.max(b.edge(), b.full());
+            double f = inFull ? 1 : 1 - Math.abs(s - b.full()) / Math.max(1e-9, Math.abs(b.taper() - b.full()));
+            base = lerp(base, b.target(), f, base);
+        }
         if (auxLanes.isEmpty()) return base;
         double[] out = base.clone();
         int n = out.length;

@@ -33,17 +33,22 @@ public record LaneProfile(double[] widths, LaneKind[] kinds) {
      * count puts the middle lane in the centre slot (painted as asphalt), an even count puts a lane line
      * there; the remaining lanes fill the outer slots symmetrically.
      */
-    public static double[] widthsOf(RoadClass c, boolean oneWay) {
+    public static double[] widthsOf(RoadClass c, boolean oneWay) { return widthsOf(c, oneWay, c.lanesPerDirection()); }
+
+    /** One-way widths with {@code lanes} lanes (up to 8, e.g. two branches' lanes side by side before a fork). */
+    public static double[] oneWayWidths(RoadClass c, int lanes) { return widthsOf(c, true, Math.max(1, Math.min(8, lanes))); }
+
+    private static double[] widthsOf(RoadClass c, boolean oneWay, int n) {
         double[] w = new double[KINDS.length];
-        double[] side = sideWidths(c, oneWay);
+        double[] side = sideWidths(c, oneWay, n);
         int half = CENTRE_INDEX;
         for (int i = 0; i < half; i++) { w[i] = side[i]; w[KINDS.length - 1 - i] = side[i]; }
-        w[CENTRE_INDEX] = oneWay ? (c.lanesPerDirection() % 2 == 1 ? c.laneWidth() : 1) : 1;
+        w[CENTRE_INDEX] = oneWay ? (n % 2 == 1 ? c.laneWidth() : 1) : 1;
         return w;
     }
 
     /** Widths of one side, outside in, matching the first half of {@link #KINDS}. */
-    private static double[] sideWidths(RoadClass c, boolean oneWay) {
+    private static double[] sideWidths(RoadClass c, boolean oneWay, int n) {
         double[] s = new double[CENTRE_INDEX];
         int i = 0;
         s[i++] = c.sidewalkWidth();                 // SIDEWALK
@@ -52,7 +57,6 @@ public record LaneProfile(double[] widths, LaneKind[] kinds) {
         s[i++] = c.edgeLines() ? 1 : 0;             // EDGE
         s[i++] = 0;                                 // AUX
         s[i++] = 0;                                 // AUX_LINE
-        int n = c.lanesPerDirection();
         // Lanes per side: all n for a two-way road; for a one-way road the lanes beside the centre slot.
         int perSide = oneWay ? n / 2 : n;
         // One-way with an odd count: the centre slot is a lane, so slot LANE(1) stays empty and the outer

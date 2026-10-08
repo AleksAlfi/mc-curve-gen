@@ -72,7 +72,11 @@ public final class RoadPainter {
             else {
                 Merge m = Merge.at(net, node);
                 if (m != null) paintMerge(m, chains, cells);
-                else { Split sp = Split.at(net, node); if (sp != null) paintSplit(sp, chains, cells); }
+                else {
+                    Split sp = Split.at(net, node);
+                    if (sp != null) paintSplit(sp, chains, cells);
+                    else { Fork fk = Fork.at(net, node); if (fk != null) paintFork(fk, chains, cells); }
+                }
             }
         }
         return cells;
@@ -334,6 +338,45 @@ public final class RoadPainter {
                     boolean border = t <= lo + 1 || t >= hi - 1;
                     boolean stripe = Math.floorMod((int) Math.floor(s - 2 * t), 6) < 2;
                     cells.put(k, new Cell(border || stripe ? Surface.LINE : Surface.ASPHALT, sp.cls(), y, 1, 0, 0, -1));
+                }
+            }
+        }
+    }
+
+    /** The hatched nose between the two branches of a fork, on the side where they are apart. */
+    private static void paintFork(Fork f, List<RoadChain> chains, CellMap cells) {
+        RoadChain rc = null, lc = null;
+        for (RoadChain c : chains) {
+            if (c.linkIds().contains(f.right().id())) rc = c;
+            if (c.linkIds().contains(f.left().id())) lc = c;
+        }
+        if (rc == null || lc == null) return;
+        Vec2 centre = f.node().xz();
+        Vec2 dm = f.diverge() ? f.d() : f.d().scale(-1);
+        Vec2 rm = new Vec2(-dm.z(), dm.x());
+        boolean rightOnRm = f.branchPos(f.right()).sub(centre).dot(rm) > 0;
+        int reach = 120;
+        double[] er = edgeByS(rc, centre, dm, rm, reach, rightOnRm);
+        double[] el = edgeByS(lc, centre, dm, rm, reach, !rightOnRm);
+        double farEnough = 0.75 * f.trunkClass().laneWidth();
+        java.util.Set<Long> done = new java.util.HashSet<>();
+        for (int idx = 0; idx <= reach; idx++) {
+            if (Double.isNaN(er[idx]) || Double.isNaN(el[idx])) { if (idx > 0) break; else continue; }
+            double lo = Math.min(er[idx], el[idx]), hi = Math.max(er[idx], el[idx]);
+            if (hi - lo > farEnough + 2) break;
+            if (hi - lo < 0.5) continue;
+            for (double s = idx - 0.5; s < idx + 0.5; s += 0.5) {
+                for (double t = lo; t < hi; t += 0.5) {
+                    Vec2 q = centre.add(dm.scale(s)).add(rm.scale(t));
+                    int x = (int) Math.floor(q.x()), z = (int) Math.floor(q.z());
+                    long k = key(x, z);
+                    if (!done.add(k)) continue;
+                    double y = RoadGeometry.heightAt(rc.line(), q);
+                    Cell existing = cells.at(k, y);
+                    if (existing != null && existing.surface.raised()) continue;
+                    boolean border = t <= lo + 1 || t >= hi - 1;
+                    boolean stripe = Math.floorMod((int) Math.floor(s - 2 * t), 6) < 2;
+                    cells.put(k, new Cell(border || stripe ? Surface.LINE : Surface.ASPHALT, f.trunkClass(), y, 1, 0, 0, -1));
                 }
             }
         }

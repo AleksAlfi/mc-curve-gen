@@ -37,6 +37,7 @@ public record Merge(RoadNode node, RoadLink forward, RoadLink back, RoadLink ram
         if (node.kind() == NodeKind.ROUNDABOUT || node.kind() == NodeKind.JUNCTION) return null;
         List<RoadLink> links = RoadGeometry.arms(net, node);
         if (links.size() != 3) return null;
+        if (Fork.at(net, node) != null) return null;
         Vec2[] u = new Vec2[3];
         RoadNode[] other = new RoadNode[3];
         for (int i = 0; i < 3; i++) {

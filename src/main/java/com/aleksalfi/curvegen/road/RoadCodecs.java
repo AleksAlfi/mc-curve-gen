@@ -76,7 +76,8 @@ public final class RoadCodecs {
             Codec.INT.optionalFieldOf("sidewalk").forGetter(RoadLink::sidewalk),
             Codec.BOOL.optionalFieldOf("edge_lines").forGetter(RoadLink::edgeLines),
             Codec.INT.optionalFieldOf("shoulder").forGetter(RoadLink::shoulder),
-            Codec.INT.optionalFieldOf("lane_width").forGetter(RoadLink::laneWidth)
+            Codec.INT.optionalFieldOf("lane_width").forGetter(RoadLink::laneWidth),
+            Codec.INT.optionalFieldOf("lanes").forGetter(RoadLink::lanes)
     ).apply(i, RoadLink::new));
 
     public static final Codec<RoadNetwork> NETWORK = RecordCodecBuilder.create(i -> i.group(

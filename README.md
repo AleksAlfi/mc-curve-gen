@@ -152,6 +152,9 @@ the player who created them.
      its direction, the lanes run straight into their roads around a hatched nose. A node kind can force
      (*Split*) or prevent (*Junction*) it. *Make split* in the node screen (or `/roadgen node split <id>`) sets
      both directions for you, e.g. to split a highway into two one-way carriageways and route them apart.
+   * **Fork / join**: a one-way road dividing into two one-way roads with the same lane count (or two such
+     joining into one) keeps every lane: the trunk widens to carry both branches side by side, each branch
+     takes its half straight on, with a hatched nose between them.
    * **Ramp merge**: a road joining a road with 2+ lanes per direction at under 35° (or any one-way road there)
      becomes an entry or exit ramp: the ramp meets the carriageway at a nose beside the through lanes, with an
      acceleration lane after an entry or a deceleration lane before an exit (*Merge lane* length per class,
@@ -160,8 +163,8 @@ the player who created them.
      node kind can force either. Right-hand traffic: the ramp must lie to the right of the carriageway it serves.
    * **Class change** at a node: the wider road tapers into the narrower one over 10 blocks per block of width
      difference (at least 20), entirely on the wider road's side; curbs and sidewalks switch at the node.
-   * **Per road** (road screen, or `/roadgen linkset <road> lanewidth|sidewalk|edgelines|shoulder <value|class>`):
-     the lane width, sidewalk width, edge lines and shoulder can override the class for one road (empty field =
+   * **Per road** (road screen, or `/roadgen linkset <road> lanes|lanewidth|sidewalk|edgelines|shoulder <value|class>`):
+     the lane count, lane width, sidewalk width, edge lines and shoulder can override the class for one road (empty field =
      as the class, shown greyed), e.g. a street without pavement where it serves as a ramp. Roads of one class
      with different overrides taper into each other.
 5. **Road classes** (per network, editable, four by default: Street, Main road, Highway and Ramp, the last a

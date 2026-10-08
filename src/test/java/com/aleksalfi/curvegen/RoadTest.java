@@ -7,6 +7,7 @@ import com.aleksalfi.curvegen.road.CellMap;
 import com.aleksalfi.curvegen.road.CornerStyle;
 import com.aleksalfi.curvegen.road.Junction;
 import com.aleksalfi.curvegen.road.LaneKind;
+import com.aleksalfi.curvegen.road.Fork;
 import com.aleksalfi.curvegen.road.LaneProfile;
 import com.aleksalfi.curvegen.road.LinkDir;
 import com.aleksalfi.curvegen.road.Split;
@@ -870,5 +871,57 @@ class RoadTest {
         assertEquals(9, sp.offset(), 1e-9, "one-way carriageway centred on the two-way half: 8.5 + 0.5");
         RoadNetwork lone = RoadNetwork.empty("y").addNode(0, 64, 0).addNode(9, 64, 0).addLink(1, 2, "street");
         assertSame(lone, lone.makeSplit(1), "not a split candidate: unchanged");
+    }
+
+    private static RoadNetwork forkNet(boolean diverge) {
+        RoadNetwork net = RoadNetwork.empty("x").addNode(-150.5, 64, 0.5).addNode(0.5, 64, 0.5).addNode(150.5, 64, 50.5).addNode(150.5, 64, -50.5)
+                .addLink(1, 2, "highway").addLink(2, 3, "highway").addLink(2, 4, "highway");
+        LinkDir in = diverge ? LinkDir.FORWARD : LinkDir.REVERSE;
+        return net.putLink(net.links().get(1).withDir(in)).putLink(net.links().get(2).withDir(in)).putLink(net.links().get(3).withDir(in));
+    }
+
+    /** A one-way highway dividing into two: no merge, the trunk widens to four lanes, branches start at ±9. */
+    @Test
+    void oneWayForkKeepsAllLanes() {
+        RoadNetwork net = forkNet(true);
+        Fork f = Fork.at(net, net.nodes().get(2));
+        assertNotNull(f);
+        assertTrue(f.diverge());
+        assertNull(Merge.at(net, net.nodes().get(2)), "not a ramp");
+        assertFalse(RoadGeometry.isJunction(net, net.nodes().get(2)));
+        List<RoadChain> chains = RoadGeometry.chains(net);
+        RoadChain trunk = null;
+        for (RoadChain c : chains) if (c.linkIds().contains(1)) trunk = c;
+        assertEquals(RoadClass.highway().oneWayHalf() + 3, trunk.halfAt(20), 1e-6, "two lanes far from the node");
+        double wide = com.aleksalfi.curvegen.geom.Rasterizer.half(f.trunkTarget());
+        assertEquals(wide, trunk.halfAt(trunk.length() - 5), 1e-6, "four lanes at the node");
+        for (RoadChain c : chains) {
+            if (c.linkIds().contains(2)) assertEquals(9.5, c.line().z[0], 0.6, "south branch starts at +9");
+            if (c.linkIds().contains(3)) assertEquals(-8.5, c.line().z[0], 0.6, "north branch starts at -9");
+        }
+        CellMap cells = RoadPainter.paint(net, chains);
+        int lines = 0;
+        for (int x = 10; x < 60; x++) for (int z = -10; z <= 10; z++) if (at(cells, x, z) == Surface.LINE) lines++;
+        assertTrue(lines > 20, "hatched nose between the branches: " + lines);
+    }
+
+    @Test
+    void oneWayJoinMirrorsTheFork() {
+        RoadNetwork net = forkNet(false);
+        Fork f = Fork.at(net, net.nodes().get(2));
+        assertNotNull(f);
+        assertFalse(f.diverge());
+        RoadChain trunk = null;
+        for (RoadChain c : RoadGeometry.chains(net)) if (c.linkIds().contains(1)) trunk = c;
+        assertEquals(2, trunk.nodeIds().get(0), "trunk leaves the join");
+        assertEquals(com.aleksalfi.curvegen.geom.Rasterizer.half(f.trunkTarget()), trunk.halfAt(5), 1e-6);
+    }
+
+    /** Per-road lane count. */
+    @Test
+    void perRoadLaneCount() {
+        RoadNetwork net = RoadNetwork.empty("x").addNode(0, 64, 0).addNode(50, 64, 0).addLink(1, 2, "street");
+        net = net.putLink(net.links().get(1).withLanes(java.util.Optional.of(2)));
+        assertEquals(2, net.classOf(net.links().get(1)).lanesPerDirection());
     }
 }

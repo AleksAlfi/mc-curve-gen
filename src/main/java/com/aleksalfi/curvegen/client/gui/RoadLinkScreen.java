@@ -23,7 +23,7 @@ import java.util.Locale;
 
 /** Settings of one road (link): its class, and priority / zebra at each end node. */
 public class RoadLinkScreen extends Screen implements RoadScreen {
-    private static final int W = 420, H = 174;
+    private static final int W = 470, H = 174;
     private final int linkId;
     private int left, top;
     private boolean needsRebuild;
@@ -68,7 +68,9 @@ public class RoadLinkScreen extends Screen implements RoadScreen {
         // Per-road overrides: text fields; empty means "as the class" (shown as the placeholder).
         label(8, y + 5, 0xAAAAAA, Component.translatable("curvegen.road.link.overrides"));
         RoadClass base = net.classes().getOrDefault(link.classId(), cls);
-        int fx = 84;
+        int fx = 76;
+        fx = overrideField(fx, y, "curvegen.road.link.lanes", link.lanes().map(String::valueOf).orElse(""), String.valueOf(base.lanesPerDirection()),
+                v -> parseInt(v, 1, 4), n -> ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_LANES, linkId, n)));
         fx = overrideField(fx, y, "curvegen.road.link.lane_width", link.laneWidth().map(String::valueOf).orElse(""), String.valueOf(base.laneWidth()),
                 v -> parseInt(v, 2, 32), n -> ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_LANE_WIDTH, linkId, n)));
         fx = overrideField(fx, y, "curvegen.road.link.sidewalk", link.sidewalk().map(String::valueOf).orElse(""), String.valueOf(base.sidewalkWidth()),

@@ -215,6 +215,8 @@ public final class ClientEvents {
         com.aleksalfi.curvegen.road.Merge merge = com.aleksalfi.curvegen.road.Merge.at(net, n);
         if (merge != null) return (merge.entry() ? "entry ramp onto " : "exit ramp from ") + merge.highway().name();
         if (com.aleksalfi.curvegen.road.Split.at(net, n) != null) return "split into one-way roads";
+        com.aleksalfi.curvegen.road.Fork fork = com.aleksalfi.curvegen.road.Fork.at(net, n);
+        if (fork != null) return fork.diverge() ? "fork" : "join";
         int deg = net.degree(n.id());
         if (deg >= 3) return "junction, " + deg + " arms";
         if (deg == 2) return n.corner() == com.aleksalfi.curvegen.road.CornerStyle.SMOOTH ? "smooth" : "fillet r" + (int) n.filletRadius();

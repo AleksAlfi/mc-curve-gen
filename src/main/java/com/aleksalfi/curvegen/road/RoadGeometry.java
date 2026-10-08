@@ -63,7 +63,7 @@ public final class RoadGeometry {
     }
 
     public static boolean isJunction(RoadNetwork net, RoadNode node) {
-        return node.kind() != NodeKind.ROUNDABOUT && arms(net, node).size() >= 3 && Merge.at(net, node) == null && Split.at(net, node) == null;
+        return node.kind() != NodeKind.ROUNDABOUT && arms(net, node).size() >= 3 && Merge.at(net, node) == null && Split.at(net, node) == null && Fork.at(net, node) == null;
     }
 
     /** Whether a chain travelling along {@code in} into {@code node} may continue along {@code out}: same mode, consistent direction. */
@@ -231,6 +231,17 @@ public final class RoadGeometry {
         if (rampEnd) dl = mEnd.entry() ? mEnd.d() : mEnd.d().scale(-1);
         if (splitOut) d0 = sStart.d();
         if (splitIn) dl = sEnd.d().scale(-1);
+        // Forks: a branch starts (diverge) or ends (converge) beside the trunk centre line, parallel to it;
+        // the trunk itself runs straight into the node.
+        Fork fStart = loop ? null : Fork.at(net, first), fEnd = loop ? null : Fork.at(net, last);
+        boolean forkBranchStart = fStart != null && fStart.diverge() && fStart.isBranch(linkIds.get(0));
+        boolean forkBranchEnd = fEnd != null && !fEnd.diverge() && fEnd.isBranch(linkIds.get(linkIds.size() - 1));
+        boolean forkTrunkStart = fStart != null && !fStart.diverge() && fStart.trunk().id() == linkIds.get(0);
+        boolean forkTrunkEnd = fEnd != null && fEnd.diverge() && fEnd.trunk().id() == linkIds.get(linkIds.size() - 1);
+        if (forkBranchStart) { startPos = fStart.branchPos(net.links().get(linkIds.get(0))); d0 = fStart.d(); }
+        if (forkBranchEnd) { endPos = fEnd.branchPos(net.links().get(linkIds.get(linkIds.size() - 1))); dl = fEnd.d(); }
+        if (forkTrunkStart) d0 = fStart.d();
+        if (forkTrunkEnd) dl = fEnd.d();
         // Inside a junction box or roundabout flare the arm must run straight (that is what gets painted there),
         // so a chain leaving such a node gets a straight key at the box edge and corners may only start beyond it.
         double startStraight = loop ? 0 : straightRun(net, first, nodes.get(1));
@@ -378,6 +389,8 @@ public final class RoadGeometry {
         if (loop) nodeAlong[nodeAlong.length - 1] = line.totalLength();
         TaperProfile profile = new TaperProfile(nodeAlong, linkClasses, oneWay);
         solidRanges.addAll(profile.taperRanges());
+        if (forkTrunkStart) forkBlend(profile, fStart, line.totalLength(), true);
+        if (forkTrunkEnd) forkBlend(profile, fEnd, line.totalLength(), false);
         if (rampStart) mergeZone(profile, line, mStart, linkClasses.get(0), oneWay, true);
         if (rampEnd) mergeZone(profile, line, mEnd, linkClasses.get(linkClasses.size() - 1), oneWay, false);
         // The two-way road approaching a split gets a solid centre line.
@@ -544,6 +557,14 @@ public final class RoadGeometry {
         w[outer[2]] = m.highway().shoulderWidth();
         w[outer[3]] = m.highway().edgeLines() ? 1 : 0;
         profile.addZone(from, to, w);
+    }
+
+    /** The trunk of a fork widens to both branches' lanes over the last stretch before (or first after) the node. */
+    private static void forkBlend(TaperProfile profile, Fork f, double length, boolean atStart) {
+        double full = Math.min(2.0 * f.trunkClass().laneWidth() + 10, 0.3 * length);
+        double taper = Math.min(Merge.LANE_TAPER, 0.25 * length);
+        if (atStart) profile.addBlend(new TaperProfile.Blend(0, full, full + taper, f.trunkTarget()));
+        else profile.addBlend(new TaperProfile.Blend(length, length - full, length - full - taper, f.trunkTarget()));
     }
 
     /** Class of the link arriving at node index {@code i} of the (possibly loop-extended) node list. */

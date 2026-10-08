@@ -25,7 +25,7 @@ public record RoadEdit(Op op, int id, int id2, String text, Optional<RoadNode> n
         /** Set link {@code id}'s direction to {@code text} (a {@link LinkDir} name). */
         LINK_DIR,
         /** Per-road overrides of link {@code id}: {@code id2} is the value, -1 clears it (inherit from the class). */
-        LINK_SIDEWALK, LINK_EDGE_LINES, LINK_SHOULDER, LINK_LANE_WIDTH,
+        LINK_SIDEWALK, LINK_EDGE_LINES, LINK_SHOULDER, LINK_LANE_WIDTH, LINK_LANES,
         /** Make node {@code id} a split: set the directions of its two non-trunk roads. */
         NODE_SPLIT
     }
