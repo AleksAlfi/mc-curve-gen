@@ -766,8 +766,9 @@ class RoadTest {
     void perRoadOverridesApply() {
         RoadNetwork net = RoadNetwork.empty("x").addNode(0.5, 64, 0.5).addNode(100.5, 64, 0.5).addNode(200.5, 64, 0.5)
                 .addLink(1, 2, "street").addLink(2, 3, "street");
-        net = net.putLink(net.links().get(2).withSidewalk(java.util.Optional.of(0)).withEdgeLines(java.util.Optional.of(true)).withShoulder(java.util.Optional.of(2)));
+        net = net.putLink(net.links().get(2).withSidewalk(java.util.Optional.of(0)).withEdgeLines(java.util.Optional.of(true)).withShoulder(java.util.Optional.of(2)).withLaneWidth(java.util.Optional.of(6)));
         RoadClass eff = net.classOf(net.links().get(2));
+        assertEquals(6, eff.laneWidth());
         assertEquals(0, eff.sidewalkWidth());
         assertTrue(eff.edgeLines());
         assertEquals(2, eff.shoulderWidth());
@@ -782,5 +783,22 @@ class RoadTest {
         assertEquals(Surface.LINE, at(cells, 150, 7), "edge line on the overridden road");
         assertEquals(Surface.ASPHALT, at(cells, 150, 8), "shoulder outside the edge line");
         assertEquals(Surface.NONE, at(cells, 150, 10));
+    }
+
+    /** A road drawn along the carriageway between two highway nodes is not a ramp, and coincident nodes do not break a chain. */
+    @Test
+    void roadAlongTheHighwayIsNotARamp() {
+        RoadNetwork net = RoadNetwork.empty("x").addNode(0.5, 64, 0.5).addNode(100.5, 64, 0.5).addNode(200.5, 64, 0.5).addNode(300.5, 64, 0.5)
+                .addNode(200.5, 64, 0.5)
+                .addLink(1, 2, "highway").addLink(2, 3, "highway").addLink(3, 5, "highway").addLink(5, 4, "highway").addLink(2, 3, "street");
+        // link 5 (street 2-3) is refused as a duplicate link; use a separate inner node instead
+        net = net.addNode(150.5, 64, 0.5).addLink(2, 6, "street").addLink(6, 3, "street");
+        assertNull(Merge.at(net, net.nodes().get(2)), "street along the highway must not be a ramp");
+        assertNull(Merge.at(net, net.nodes().get(3)));
+        for (RoadChain c : RoadGeometry.chains(net)) {
+            for (int i = 0; i < c.line().size; i++) assertFalse(Double.isNaN(c.line().x[i]) || Double.isNaN(c.line().y[i]), "NaN in chain " + c.nodeIds());
+        }
+        CellMap cells = RoadPainter.paint(net, RoadGeometry.chains(net));
+        assertEquals(Surface.LINE, at(cells, 250, 0), "highway continues through the coincident nodes");
     }
 }

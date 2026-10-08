@@ -181,13 +181,14 @@ public final class RoadService {
                 next = net.putLink(link.withClassId(edit.text()));
             }
             case LINK_DELETE -> next = net.removeLink(edit.id());
-            case LINK_SIDEWALK, LINK_EDGE_LINES, LINK_SHOULDER -> {
+            case LINK_SIDEWALK, LINK_EDGE_LINES, LINK_SHOULDER, LINK_LANE_WIDTH -> {
                 RoadLink link = net.links().get(edit.id());
                 if (link == null) return false;
                 int v = edit.id2();
                 RoadLink changed = switch (edit.op()) {
                     case LINK_SIDEWALK -> link.withSidewalk(v < 0 ? Optional.empty() : Optional.of(Math.min(16, v)));
                     case LINK_EDGE_LINES -> link.withEdgeLines(v < 0 ? Optional.empty() : Optional.of(v > 0));
+                    case LINK_LANE_WIDTH -> link.withLaneWidth(v < 0 ? Optional.empty() : Optional.of(Math.max(2, Math.min(32, v))));
                     default -> link.withShoulder(v < 0 ? Optional.empty() : Optional.of(Math.min(8, v)));
                 };
                 next = net.putLink(changed);
@@ -229,7 +230,7 @@ public final class RoadService {
         return switch (edit.op()) {
             case NODE_UPDATE -> "node:" + edit.id();
             case CLASS_PUT -> "class:" + edit.roadClass().map(RoadClass::id).orElse("");
-            case LINK_CLASS, LINK_DIR, LINK_SIDEWALK, LINK_EDGE_LINES, LINK_SHOULDER -> "link:" + edit.id();
+            case LINK_CLASS, LINK_DIR, LINK_SIDEWALK, LINK_EDGE_LINES, LINK_SHOULDER, LINK_LANE_WIDTH -> "link:" + edit.id();
             default -> null;
         };
     }

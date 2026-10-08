@@ -153,6 +153,11 @@ public final class RoadGeometry {
         for (int linkId : linkIds) linkClasses.add(net.classOf(net.links().get(linkId)));
         List<RoadNode> nodes = new ArrayList<>();
         for (int id : nodeIds) nodes.add(net.nodes().get(id));
+        // Nodes on top of each other (a zero-length link) contribute nothing: drop the later one.
+        for (int i = nodes.size() - 1; i >= 1; i--) {
+            if (nodes.get(i).xz().distanceTo(nodes.get(i - 1).xz()) < 0.5 && !(i == nodes.size() - 1 && nodes.size() == 2)) nodes.remove(i);
+        }
+        if (nodes.size() < 2) return null;
         // A closed loop of plain nodes: the start node is a corner like every other, so the chain is laid
         // out as [last-1, first, ..., last-1, first] and both ends are cut at the middle of that shared link.
         boolean loop = nodeIds.size() >= 4 && nodeIds.get(0).equals(nodeIds.get(nodeIds.size() - 1)) && passThrough(net, nodes.get(0));

@@ -13,6 +13,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -64,28 +65,18 @@ public class RoadLinkScreen extends Screen implements RoadScreen {
         button(220, y, W - 8 - 220, Component.translatable("curvegen.road.link.dir." + link.dir().name().toLowerCase(Locale.ROOT), link.a(), link.b()),
                 b -> ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_DIR, linkId, link.dir().next().name())));
         y += 22;
-        // Per-road overrides: each cycles class value -> options -> class value.
+        // Per-road overrides: text fields; empty means "as the class" (shown as the placeholder).
         label(8, y + 5, 0xAAAAAA, Component.translatable("curvegen.road.link.overrides"));
         RoadClass base = net.classes().getOrDefault(link.classId(), cls);
-        String sw = link.sidewalk().map(String::valueOf).orElse(null);
-        button(76, y, 108, Component.translatable("curvegen.road.link.sidewalk", sw == null ? Component.translatable("curvegen.road.link.inherit", base.sidewalkWidth()) : Component.literal(sw)), b -> {
-            int[] steps = {-1, 0, 1, 2, 3, 4, 5, 6};
-            int cur = link.sidewalk().orElse(-1);
-            int idx = java.util.Arrays.stream(steps).boxed().toList().indexOf(cur);
-            ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_SIDEWALK, linkId, steps[(Math.max(0, idx) + 1) % steps.length]));
-        });
-        String el = link.edgeLines().map(v -> Component.translatable(v ? "curvegen.gui.on" : "curvegen.gui.off").getString()).orElse(null);
-        button(188, y, 108, Component.translatable("curvegen.road.link.edge_lines", el == null ? Component.translatable("curvegen.road.link.inherit", Component.translatable(base.edgeLines() ? "curvegen.gui.on" : "curvegen.gui.off")) : Component.literal(el)), b -> {
-            int next = link.edgeLines().isEmpty() ? 1 : link.edgeLines().get() ? 0 : -1;
-            ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_EDGE_LINES, linkId, next));
-        });
-        String sh = link.shoulder().map(String::valueOf).orElse(null);
-        button(300, y, W - 8 - 300, Component.translatable("curvegen.road.link.shoulder", sh == null ? Component.translatable("curvegen.road.link.inherit", base.shoulderWidth()) : Component.literal(sh)), b -> {
-            int[] steps = {-1, 0, 1, 2, 3, 4};
-            int cur = link.shoulder().orElse(-1);
-            int idx = java.util.Arrays.stream(steps).boxed().toList().indexOf(cur);
-            ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_SHOULDER, linkId, steps[(Math.max(0, idx) + 1) % steps.length]));
-        });
+        int fx = 84;
+        fx = overrideField(fx, y, "curvegen.road.link.lane_width", link.laneWidth().map(String::valueOf).orElse(""), String.valueOf(base.laneWidth()),
+                v -> parseInt(v, 2, 32), n -> ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_LANE_WIDTH, linkId, n)));
+        fx = overrideField(fx, y, "curvegen.road.link.sidewalk", link.sidewalk().map(String::valueOf).orElse(""), String.valueOf(base.sidewalkWidth()),
+                v -> parseInt(v, 0, 16), n -> ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_SIDEWALK, linkId, n)));
+        fx = overrideField(fx, y, "curvegen.road.link.edge_lines", link.edgeLines().map(v -> v ? "on" : "off").orElse(""), base.edgeLines() ? "on" : "off",
+                v -> parseBool(v), n -> ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_EDGE_LINES, linkId, n)));
+        overrideField(fx, y, "curvegen.road.link.shoulder", link.shoulder().map(String::valueOf).orElse(""), String.valueOf(base.shoulderWidth()),
+                v -> parseInt(v, 0, 8), n -> ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_SHOULDER, linkId, n)));
         y += 24;
         label(8, y, 0x55FFFF, Component.translatable("curvegen.road.link.ends"));
         y += 12;
@@ -104,6 +95,34 @@ public class RoadLinkScreen extends Screen implements RoadScreen {
         y = H - 26;
         button(8, y, 110, Component.translatable("curvegen.road.link.delete"), b -> { ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_DELETE, linkId)); onClose(); });
         button(W - 8 - 120, y, 120, Component.translatable("curvegen.road.node.network_screen"), b -> Minecraft.getInstance().setScreen(new RoadNetworkScreen()));
+    }
+
+    /** Label plus a small text box; returns the x after it. The parser returns -1 for empty (inherit) or null when invalid. */
+    private int overrideField(int x, int y, String labelKey, String value, String hint, java.util.function.Function<String, Integer> parse, java.util.function.IntConsumer send) {
+        Component lbl = Component.translatable(labelKey);
+        label(x, y + 5, 0xAAAAAA, lbl);
+        int bx = x + font.width(lbl) + 4;
+        EditBox box = new EditBox(font, left + bx, top + y, 30, 18, lbl);
+        box.setMaxLength(3);
+        box.setHint(Component.literal(hint).withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+        box.setValue(value);
+        box.setResponder(s -> {
+            Integer v = parse.apply(s.trim());
+            box.setTextColor(v == null ? 0xFF5555 : 0xE0E0E0);
+            if (v != null && !s.trim().equals(value)) send.accept(v);
+        });
+        addRenderableWidget(box);
+        return bx + 34;
+    }
+
+    private static Integer parseInt(String s, int min, int max) {
+        if (s.isEmpty()) return -1;
+        try { int v = Integer.parseInt(s); return v >= min && v <= max ? v : null; } catch (NumberFormatException e) { return null; }
+    }
+
+    private static Integer parseBool(String s) {
+        if (s.isEmpty()) return -1;
+        return switch (s.toLowerCase(Locale.ROOT)) { case "on", "true", "yes", "1" -> 1; case "off", "false", "no", "0" -> 0; default -> null; };
     }
 
     @Override

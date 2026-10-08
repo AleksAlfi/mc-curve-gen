@@ -25,7 +25,7 @@ public record RoadEdit(Op op, int id, int id2, String text, Optional<RoadNode> n
         /** Set link {@code id}'s direction to {@code text} (a {@link LinkDir} name). */
         LINK_DIR,
         /** Per-road overrides of link {@code id}: {@code id2} is the value, -1 clears it (inherit from the class). */
-        LINK_SIDEWALK, LINK_EDGE_LINES, LINK_SHOULDER
+        LINK_SIDEWALK, LINK_EDGE_LINES, LINK_SHOULDER, LINK_LANE_WIDTH
     }
 
     public static final Codec<RoadEdit> CODEC = RecordCodecBuilder.create(i -> i.group(

@@ -76,6 +76,11 @@ public record Merge(RoadNode node, RoadLink forward, RoadLink back, RoadLink ram
         else { d = u[a]; if (u[r].dot(new Vec2(-d.z(), d.x())) < 0) d = u[b]; }
         Vec2 right = new Vec2(-d.z(), d.x());
         if (u[r].dot(right) < 0) return null; // ramp on the wrong side of a one-way road
+        // The ramp must really leave the road: its far node has to lie outside the through road's width.
+        // A road drawn along the carriageway (both ends on the highway) is not a ramp.
+        double rampLen = other[r].xz().sub(node.xz()).length();
+        double sideways = Math.abs(u[r].dot(right)) * rampLen;
+        if (sideways < hw.halfTotal() + 2) return null;
         RoadLink forward = d == u[a] ? la : lb;
         RoadLink backLink = d == u[a] ? lb : la;
         boolean entry = switch (node.kind()) {
