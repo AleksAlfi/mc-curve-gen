@@ -48,6 +48,11 @@ public final class RoadPainter {
         if (existing == null || existing.chainId == candidate.chainId) return true;
         if (candidate.full() != existing.full()) return candidate.full();
         if (candidate.carriageway() != existing.carriageway()) return candidate.carriageway();
+        if (Math.abs(candidate.lateral - existing.lateral) < 0.75) {
+            // Roads running on top of each other: the wider one is the real road.
+            double cw = candidate.cls.halfTotal(), ew = existing.cls.halfTotal();
+            if (cw != ew) return cw > ew;
+        }
         return candidate.lateral <= existing.lateral;
     }
 

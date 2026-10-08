@@ -28,7 +28,7 @@ public record Split(RoadNode node, RoadLink twoWay, RoadLink out, RoadLink in, V
     public static Split at(RoadNetwork net, RoadNode node) {
         if (node.kind() == NodeKind.ROUNDABOUT || node.kind() == NodeKind.JUNCTION) return null;
         if (node.kind() != NodeKind.FORK && node.kind() != NodeKind.AUTO) return null;
-        List<RoadLink> links = net.linksOf(node.id());
+        List<RoadLink> links = RoadGeometry.arms(net, node);
         if (links.size() != 3) return null;
         RoadLink two = null, out = null, in = null;
         for (RoadLink l : links) {

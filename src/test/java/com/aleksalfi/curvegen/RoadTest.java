@@ -243,6 +243,7 @@ class RoadTest {
                 net = net.addNode(Math.rint(Math.cos(ang) * len) + 0.5, 64, Math.rint(Math.sin(ang) * len) + 0.5);
                 net = net.addLink(1, a + 2, rnd.nextInt(4) == 0 ? "main" : "street");
             }
+            if (RoadGeometry.arms(net, net.nodes().get(1)).size() < 3) continue; // two arms nearly parallel: not a junction
             CellMap cells = RoadPainter.paint(net, RoadGeometry.chains(net));
             assertEquals(Surface.ASPHALT, at(cells, 0, 0), "trial " + trial + " centre");
             Junction j = Junction.of(net, net.nodes().get(1));
@@ -795,10 +796,20 @@ class RoadTest {
         net = net.addNode(150.5, 64, 0.5).addLink(2, 6, "street").addLink(6, 3, "street");
         assertNull(Merge.at(net, net.nodes().get(2)), "street along the highway must not be a ramp");
         assertNull(Merge.at(net, net.nodes().get(3)));
+        assertFalse(RoadGeometry.isJunction(net, net.nodes().get(2)), "nor a junction");
+        assertTrue(RoadGeometry.passThrough(net, net.nodes().get(2)), "the highway passes straight through");
+        RoadChain hwChain = null;
+        for (RoadChain c : RoadGeometry.chains(net)) if (c.nodeIds().contains(1) && c.nodeIds().contains(4)) hwChain = c;
+        assertNotNull(hwChain, "one highway chain end to end");
         for (RoadChain c : RoadGeometry.chains(net)) {
             for (int i = 0; i < c.line().size; i++) assertFalse(Double.isNaN(c.line().x[i]) || Double.isNaN(c.line().y[i]), "NaN in chain " + c.nodeIds());
         }
         CellMap cells = RoadPainter.paint(net, RoadGeometry.chains(net));
         assertEquals(Surface.LINE, at(cells, 250, 0), "highway continues through the coincident nodes");
+        // Where the street lies inside the highway, the highway's markings win: lane line present, no street curb.
+        int laneLines = 0;
+        for (int x = 110; x < 190; x++) if (at(cells, x, 9) == Surface.LINE) laneLines++;
+        assertTrue(laneLines > 15, "highway lane line continues over the hidden street: " + laneLines);
+        for (int x = 110; x < 190; x += 7) assertFalse(at(cells, x, 4).raised(), "street curb must not surface inside the highway at x=" + x);
     }
 }

@@ -20,14 +20,45 @@ public final class RoadGeometry {
 
     public static final double SAMPLE_STEP = 0.5;
 
-    /** Whether a road simply passes through this node (exactly two links, not a roundabout); the classes may differ. */
+    /**
+     * The links at a node that shape it. A link that leaves in (nearly) the same direction as a wider link
+     * lies inside that road and is ignored: a street drawn along a highway does not make a junction.
+     */
+    public static List<RoadLink> arms(RoadNetwork net, RoadNode node) {
+        List<RoadLink> links = net.linksOf(node.id());
+        List<RoadLink> out = new ArrayList<>();
+        for (RoadLink l : links) if (!shadowed(net, node, l, links)) out.add(l);
+        return out;
+    }
+
+    private static boolean shadowed(RoadNetwork net, RoadNode node, RoadLink l, List<RoadLink> links) {
+        RoadNode o = net.nodes().get(l.other(node.id()));
+        if (o == null) return false;
+        Vec2 u = o.xz().sub(node.xz());
+        if (u.lengthSq() < 1e-6) return false; // zero-length link: kept so the chain can run through both nodes
+        u = u.normalize();
+        double half = net.classOf(l).halfTotal();
+        for (RoadLink m : links) {
+            if (m.id() == l.id()) continue;
+            RoadNode om = net.nodes().get(m.other(node.id()));
+            if (om == null) continue;
+            Vec2 v = om.xz().sub(node.xz());
+            if (v.lengthSq() < 1e-6) continue;
+            double halfM = net.classOf(m).halfTotal();
+            if (halfM < half || (halfM == half && m.id() > l.id())) continue; // the wider (or earlier) road wins
+            if (v.normalize().dot(u) > Math.cos(Math.toRadians(5))) return true;
+        }
+        return false;
+    }
+
+    /** Whether a road simply passes through this node (exactly two shaping links, not a roundabout); the classes may differ. */
     public static boolean passThrough(RoadNetwork net, RoadNode node) {
         if (node.kind() == NodeKind.ROUNDABOUT) return false;
-        return net.linksOf(node.id()).size() == 2;
+        return arms(net, node).size() == 2;
     }
 
     public static boolean isJunction(RoadNetwork net, RoadNode node) {
-        return node.kind() != NodeKind.ROUNDABOUT && net.degree(node.id()) >= 3 && Merge.at(net, node) == null && Split.at(net, node) == null;
+        return node.kind() != NodeKind.ROUNDABOUT && arms(net, node).size() >= 3 && Merge.at(net, node) == null && Split.at(net, node) == null;
     }
 
     /** Whether a chain travelling along {@code in} into {@code node} may continue along {@code out}: same mode, consistent direction. */
@@ -42,7 +73,7 @@ public final class RoadGeometry {
      */
     private static RoadLink continuation(RoadNetwork net, RoadNode node, RoadLink in, Set<Integer> usedLinks) {
         if (passThrough(net, node)) {
-            for (RoadLink l : net.linksOf(node.id())) if (l.id() != in.id() && !usedLinks.contains(l.id()) && continues(in, l, node.id())) return l;
+            for (RoadLink l : arms(net, node)) if (l.id() != in.id() && !usedLinks.contains(l.id()) && continues(in, l, node.id())) return l;
             return null;
         }
         Merge m = Merge.at(net, node);

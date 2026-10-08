@@ -24,7 +24,7 @@ public final class Roundabout {
         int sw = 0, curb = 0;
         List<Vec2> dirs = new ArrayList<>();
         List<Double> grades = new ArrayList<>();
-        for (RoadLink link : net.linksOf(node.id())) {
+        for (RoadLink link : RoadGeometry.arms(net, node)) {
             RoadNode other = net.nodes().get(link.other(node.id()));
             if (other == null) continue;
             Vec2 u = other.xz().sub(center);
