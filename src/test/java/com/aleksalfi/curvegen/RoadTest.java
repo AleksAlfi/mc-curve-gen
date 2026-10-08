@@ -812,4 +812,22 @@ class RoadTest {
         assertTrue(laneLines > 15, "highway lane line continues over the hidden street: " + laneLines);
         for (int x = 110; x < 190; x += 7) assertFalse(at(cells, x, 4).raised(), "street curb must not surface inside the highway at x=" + x);
     }
+
+    /** A one-way ramp that starts where a two-way road ends is one chain with a rounded corner, up to the merge nose. */
+    @Test
+    void rampFromTwoWayRoadIsOneChain() {
+        RoadNetwork net = RoadNetwork.empty("x")
+                .addNode(0.5, 64, 0.5).addNode(0.5, 64, -300.5).addNode(0.5, 64, -540.5).addNode(0.5, 64, -420.5)   // highway 1-2-4-3 northbound
+                .addNode(46.5, 64, -303.5).addNode(129.5, 64, -280.5).addNode(222.5, 64, -280.5)                  // 5 corner, 6 ramp start, 7 main road end
+                .addLink(1, 2, "highway").addLink(2, 4, "highway").addLink(4, 3, "highway")
+                .addLink(4, 5, "ramp").addLink(6, 7, "main").addLink(6, 5, "ramp");
+        net = net.putLink(net.links().get(4).withDir(LinkDir.REVERSE)).putLink(net.links().get(6).withDir(LinkDir.FORWARD));
+        assertFalse(RoadGeometry.passThrough(net, net.nodes().get(6)), "two-way into one-way is not a pass-through");
+        assertTrue(RoadGeometry.passThrough(net, net.nodes().get(5)));
+        RoadChain ramp = null;
+        for (RoadChain c : RoadGeometry.chains(net)) if (c.linkIds().contains(4) || c.linkIds().contains(6)) { assertNull(ramp, "ramp must be a single chain"); ramp = c; }
+        assertNotNull(ramp);
+        assertEquals(List.of(6, 5, 4), ramp.nodeIds());
+        assertEquals(1, ramp.corners().size(), "rounded corner at node 5");
+    }
 }

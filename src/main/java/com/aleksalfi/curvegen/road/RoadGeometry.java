@@ -51,10 +51,15 @@ public final class RoadGeometry {
         return false;
     }
 
-    /** Whether a road simply passes through this node (exactly two shaping links, not a roundabout); the classes may differ. */
+    /**
+     * Whether a road simply passes through this node: exactly two shaping links that a chain can run along
+     * in sequence (same two-way / one-way mode, consistent direction), not a roundabout. The classes may differ.
+     */
     public static boolean passThrough(RoadNetwork net, RoadNode node) {
         if (node.kind() == NodeKind.ROUNDABOUT) return false;
-        return arms(net, node).size() == 2;
+        List<RoadLink> a = arms(net, node);
+        if (a.size() != 2) return false;
+        return continues(a.get(0), a.get(1), node.id()) || continues(a.get(1), a.get(0), node.id());
     }
 
     public static boolean isJunction(RoadNetwork net, RoadNode node) {
