@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "pattern": [
+    " PC",
+    " SP",
+    "B  "
+  ],
+  "key": {
+    "P": { "item": "minecraft:paper" },
+    "C": { "item": "minecraft:compass" },
+    "S": { "item": "minecraft:stick" },
+    "B": { "item": "minecraft:black_concrete" }
+  },
+  "result": { "id": "curvegen:road_planner", "count": 1 }
+}

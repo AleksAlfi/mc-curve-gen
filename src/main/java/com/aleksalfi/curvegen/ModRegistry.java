@@ -26,8 +26,13 @@ public final class ModRegistry {
     public static final Supplier<DataComponentType<Boolean>> AUTO_DEPLOYED = COMPONENTS.registerComponentType("auto_deployed",
             b -> b.persistent(com.mojang.serialization.Codec.BOOL).networkSynchronized(net.minecraft.network.codec.ByteBufCodecs.BOOL));
 
+    public static final Supplier<DataComponentType<com.aleksalfi.curvegen.road.RoadPlannerState>> ROAD_STATE = COMPONENTS.registerComponentType("road_state",
+            b -> b.persistent(com.aleksalfi.curvegen.road.RoadPlannerState.CODEC).networkSynchronized(com.aleksalfi.curvegen.road.RoadPlannerState.STREAM));
+
     public static final DeferredItem<Item> CURVE_PLANNER = ITEMS.registerItem("curve_planner",
             CurvePlannerItem::new, new Item.Properties().stacksTo(1));
+    public static final DeferredItem<Item> ROAD_PLANNER = ITEMS.registerItem("road_planner",
+            com.aleksalfi.curvegen.item.RoadPlannerItem::new, new Item.Properties().stacksTo(1));
 
     public static void register(IEventBus bus) {
         COMPONENTS.register(bus);

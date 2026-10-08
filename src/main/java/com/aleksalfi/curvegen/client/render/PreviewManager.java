@@ -2,18 +2,16 @@ package com.aleksalfi.curvegen.client.render;
 
 import com.aleksalfi.curvegen.CurveGen;
 import com.aleksalfi.curvegen.build.CopycatSupport;
-import com.aleksalfi.curvegen.build.PlanCompiler;
-import com.aleksalfi.curvegen.plan.CurvePlan;
-import net.minecraft.world.level.EmptyBlockGetter;
-import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Supplier;
 
-/** Keeps the compiled preview of the held planner up to date, compiling off-thread. */
+/** Keeps the compiled preview of whatever planner is held up to date, compiling off-thread. */
 public final class PreviewManager {
     private PreviewManager() {}
 
@@ -25,34 +23,37 @@ public final class PreviewManager {
         return t;
     });
 
-    private static CompletableFuture<PlanCompiler.Result> pending;
-    private static CurvePlan pendingPlan;
-    @Nullable private static PlanCompiler.Result result;
-    @Nullable private static CurvePlan resultPlan;
+    private static CompletableFuture<Compiled> pending;
+    private static Object pendingKey;
+    @Nullable private static Compiled result;
+    @Nullable private static Object resultKey;
     @Nullable private static PreviewMesh mesh;
     private static Stats stats = new Stats(0, 0, List.of());
 
-    public static void update(@Nullable CurvePlan plan, Level level) {
-        if (plan == null) {
+    /**
+     * @param key     identifies the input; a compile is started when it differs from the last one handled
+     * @param compile runs on a worker thread
+     */
+    public static void update(@Nullable Object key, Supplier<Compiled> compile) {
+        if (key == null) {
             clear();
             return;
         }
-        CurvePlan key = plan.geometryKey();
         if (pending != null && pending.isDone()) {
-            // Whatever happens below, this plan counts as handled so a failure is not retried every tick.
-            resultPlan = pendingPlan;
+            // Whatever happens below, this key counts as handled so a failure is not retried every tick.
+            resultKey = pendingKey;
             try {
-                PlanCompiler.Result r = pending.join();
-                PreviewMesh built = PreviewMesh.build(r, pendingPlan);
+                Compiled c = pending.join();
+                PreviewMesh built = PreviewMesh.build(c);
                 if (mesh != null) mesh.close();
                 mesh = built;
-                result = r;
+                result = c;
                 int layers = 0;
                 boolean copycats = CopycatSupport.available();
-                for (var b : r.blocks().blocks().values()) if (copycats && CopycatSupport.isLayer(b.state())) layers++;
-                List<String> warnings = new java.util.ArrayList<>(r.blocks().warnings());
-                if (r.blocks().size() > PreviewMesh.MAX_BLOCKS) warnings.add("Preview shows only the first " + PreviewMesh.MAX_BLOCKS + " blocks.");
-                stats = new Stats(r.blocks().size(), layers, List.copyOf(warnings));
+                for (var b : c.blocks().blocks().values()) if (copycats && CopycatSupport.isLayer(b.state())) layers++;
+                List<String> warnings = new ArrayList<>(c.warnings());
+                if (c.blocks().size() > PreviewMesh.MAX_BLOCKS) warnings.add("Preview shows only the first " + PreviewMesh.MAX_BLOCKS + " blocks.");
+                stats = new Stats(c.blocks().size(), layers, List.copyOf(warnings));
             } catch (RuntimeException e) {
                 CurveGen.LOGGER.error("Preview compile failed", e);
                 if (mesh != null) { mesh.close(); mesh = null; }
@@ -61,29 +62,28 @@ public final class PreviewManager {
             }
             pending = null;
         }
-        if (pending == null && !key.equals(resultPlan)) {
-            pendingPlan = key;
-            pending = CompletableFuture.supplyAsync(() -> PlanCompiler.compile(key, EmptyBlockGetter.INSTANCE), EXECUTOR);
+        if (pending == null && !key.equals(resultKey)) {
+            pendingKey = key;
+            pending = CompletableFuture.supplyAsync(compile, EXECUTOR);
         }
     }
 
     public static void clear() {
         if (pending != null) pending.cancel(true);
         pending = null;
-        pendingPlan = null;
-        resultPlan = null;
+        pendingKey = null;
+        resultKey = null;
         result = null;
         if (mesh != null) { mesh.close(); mesh = null; }
         stats = new Stats(0, 0, List.of());
     }
 
     @Nullable public static PreviewMesh mesh() { return mesh; }
-    @Nullable public static PlanCompiler.Result result() { return result; }
     public static Stats stats() { return stats; }
 
-    /** Blocking compile for the plan, reusing the cached result when it matches. */
-    public static PlanCompiler.Result compileNow(CurvePlan plan, Level level) {
-        if (result != null && plan.geometryKey().equals(resultPlan)) return result;
-        return PlanCompiler.compile(plan, level);
+    /** The cached result for this key, or null when it is not the one currently shown. */
+    @Nullable
+    public static Compiled cached(Object key) {
+        return result != null && key.equals(resultKey) ? result : null;
     }
 }

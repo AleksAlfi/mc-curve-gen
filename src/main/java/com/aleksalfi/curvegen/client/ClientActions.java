@@ -39,16 +39,38 @@ public final class ClientActions {
         PacketDistributor.sendToServer(new PlannerActionPayload(action));
     }
 
+    public static void sendRoad(com.aleksalfi.curvegen.network.RoadActionPayload.Action action) {
+        PacketDistributor.sendToServer(new com.aleksalfi.curvegen.network.RoadActionPayload(action));
+    }
+
+    public static void sendRoadEdit(com.aleksalfi.curvegen.road.RoadEdit edit) {
+        PacketDistributor.sendToServer(new com.aleksalfi.curvegen.network.RoadEditPayload(edit));
+    }
+
+    /** Writes the current road network as a Create schematic. */
+    public static Component exportRoad(com.aleksalfi.curvegen.road.RoadNetwork net, int selected, String name, boolean overwrite) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) return Component.literal("No world");
+        com.aleksalfi.curvegen.client.render.Compiled cached = PreviewManager.cached(new com.aleksalfi.curvegen.client.render.RoadPreview.Key(net, selected));
+        BlockPlan blocks = cached != null ? cached.blocks() : com.aleksalfi.curvegen.road.RoadCompiler.compile(net, mc.level).blocks();
+        return writeSchematic(blocks, name, overwrite);
+    }
+
     /** Writes the plan as a Create schematic into the game's schematics folder. Returns a status line. */
     public static Component exportSchematic(CurvePlan plan, boolean overwrite) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return Component.literal("No world");
-        PlanCompiler.Result result = PreviewManager.compileNow(plan, mc.level);
-        BlockPlan blocks = result.blocks();
+        com.aleksalfi.curvegen.client.render.Compiled cached = PreviewManager.cached(plan.geometryKey());
+        BlockPlan blocks = cached != null ? cached.blocks() : PlanCompiler.compile(plan, mc.level).blocks();
+        return writeSchematic(blocks, plan.schematicName(), overwrite);
+    }
+
+    private static Component writeSchematic(BlockPlan blocks, String name, boolean overwrite) {
+        Minecraft mc = Minecraft.getInstance();
         if (blocks.isEmpty()) return Component.translatable("curvegen.msg.nothing_to_export").withStyle(ChatFormatting.RED);
         Path dir = CreateCompat.schematicsDir();
         try {
-            Path file = SchematicWriter.write(blocks, dir, plan.schematicName(), overwrite);
+            Path file = SchematicWriter.write(blocks, dir, name, overwrite);
             long size = java.nio.file.Files.size(file);
             if (size > 256 * 1024 && mc.player != null) {
                 mc.player.displayClientMessage(Component.translatable("curvegen.msg.export_large", size / 1024).withStyle(ChatFormatting.GOLD), false);

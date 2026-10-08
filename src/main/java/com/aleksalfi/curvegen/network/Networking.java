@@ -22,6 +22,9 @@ public final class Networking {
         PayloadRegistrar registrar = event.registrar("1");
         registrar.playToServer(UpdatePlanPayload.TYPE, UpdatePlanPayload.STREAM_CODEC, Networking::handleUpdate);
         registrar.playToServer(PlannerActionPayload.TYPE, PlannerActionPayload.STREAM_CODEC, Networking::handleAction);
+        registrar.playToServer(RoadEditPayload.TYPE, RoadEditPayload.STREAM_CODEC, Networking::handleRoadEdit);
+        registrar.playToServer(RoadActionPayload.TYPE, RoadActionPayload.STREAM_CODEC, Networking::handleRoadAction);
+        registrar.playToClient(RoadSyncPayload.TYPE, RoadSyncPayload.STREAM_CODEC, (payload, ctx) -> com.aleksalfi.curvegen.client.ClientHooks.onRoadSync(payload));
     }
 
     private static void handleUpdate(UpdatePlanPayload payload, IPayloadContext ctx) {
@@ -48,6 +51,26 @@ public final class Networking {
             case UNDO_PLACE -> undoPlace(player);
             case DEPLOY_SCHEMATIC -> CreateCompat.deployHeldSchematic(player, true);
             case FINISH_SEGMENT -> { if (stack != null) CurvePlannerItem.setPlan(stack, CurvePlannerItem.getPlan(stack).finishDraft()); }
+            case NONE -> {}
+        }
+    }
+
+    private static void handleRoadEdit(RoadEditPayload payload, IPayloadContext ctx) {
+        if (!(ctx.player() instanceof ServerPlayer player)) return;
+        ItemStack planner = com.aleksalfi.curvegen.item.RoadPlannerItem.held(player);
+        if (planner == null) return;
+        com.aleksalfi.curvegen.road.RoadService.apply(player, planner, payload.edit());
+    }
+
+    private static void handleRoadAction(RoadActionPayload payload, IPayloadContext ctx) {
+        if (!(ctx.player() instanceof ServerPlayer player)) return;
+        ItemStack planner = com.aleksalfi.curvegen.item.RoadPlannerItem.held(player);
+        switch (payload.action()) {
+            case PLACE -> { if (planner != null) com.aleksalfi.curvegen.road.RoadService.place(player, planner); }
+            case UNDO_PLACE -> com.aleksalfi.curvegen.road.RoadService.undoPlace(player);
+            case DEPLOY_SCHEMATIC -> com.aleksalfi.curvegen.road.RoadService.deploy(player);
+            case DESELECT -> { if (planner != null) com.aleksalfi.curvegen.item.RoadPlannerItem.setState(planner, com.aleksalfi.curvegen.item.RoadPlannerItem.getState(planner).withSelected(-1)); }
+            case REQUEST_SYNC -> com.aleksalfi.curvegen.road.RoadService.sync(player);
             case NONE -> {}
         }
     }

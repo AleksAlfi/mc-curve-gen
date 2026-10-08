@@ -2,7 +2,14 @@ package com.aleksalfi.curvegen.client;
 
 import com.aleksalfi.curvegen.CurveGen;
 import com.aleksalfi.curvegen.client.gui.PlannerScreen;
+import com.aleksalfi.curvegen.client.render.CurvePreview;
 import com.aleksalfi.curvegen.client.render.PreviewManager;
+import com.aleksalfi.curvegen.client.render.RoadPreview;
+import com.aleksalfi.curvegen.item.RoadPlannerItem;
+import com.aleksalfi.curvegen.road.RoadNetwork;
+import com.aleksalfi.curvegen.road.RoadNode;
+import com.aleksalfi.curvegen.road.RoadPlannerState;
+import net.minecraft.world.level.EmptyBlockGetter;
 import com.aleksalfi.curvegen.client.render.PreviewRenderer;
 import com.aleksalfi.curvegen.compat.CreateClientHooks;
 import com.aleksalfi.curvegen.compat.CreateCompat;
@@ -43,15 +50,34 @@ public final class ClientEvents {
             if (CurvePlannerItem.held(mc.player) != null && mc.screen == null) mc.setScreen(new PlannerScreen());
         }
         while (CurveGenClient.TOGGLE_PREVIEW.consumeClick()) previewEnabled = !previewEnabled;
-        ItemStack held = CurvePlannerItem.held(mc.player);
-        PreviewManager.update(held == null ? null : CurvePlannerItem.getPlan(held), mc.level);
+        updatePreview(mc);
         if (CreateCompat.isLoaded()) CreateClientHooks.refresh();
         attackHeldLastTick = mc.options.keyAttack.isDown();
+    }
+
+    /** The main hand decides which planner is previewed; the off hand only counts when the main hand holds none. */
+    private static void updatePreview(Minecraft mc) {
+        ItemStack main = mc.player.getMainHandItem(), off = mc.player.getOffhandItem();
+        ItemStack road = main.getItem() instanceof RoadPlannerItem ? main : off.getItem() instanceof RoadPlannerItem ? off : null;
+        ItemStack curve = main.getItem() instanceof CurvePlannerItem ? main : off.getItem() instanceof CurvePlannerItem ? off : null;
+        if (road != null && !(main.getItem() instanceof CurvePlannerItem)) {
+            RoadPlannerState state = RoadPlannerItem.getState(road);
+            RoadNetwork net = RoadClientCache.named(state.network());
+            if (net == null) { PreviewManager.clear(); return; }
+            RoadPreview.Key key = new RoadPreview.Key(net, state.selectedNode());
+            PreviewManager.update(key, () -> RoadPreview.compile(net, state.selectedNode(), EmptyBlockGetter.INSTANCE));
+        } else if (curve != null) {
+            CurvePlan plan = CurvePlannerItem.getPlan(curve).geometryKey();
+            PreviewManager.update(plan, () -> CurvePreview.compile(plan, EmptyBlockGetter.INSTANCE));
+        } else {
+            PreviewManager.clear();
+        }
     }
 
     @SubscribeEvent
     public static void onLogin(net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingIn event) {
         PreviewManager.clear();
+        RoadClientCache.clear();
         com.aleksalfi.curvegen.client.gui.BlockPickerScreen.resetCache();
     }
 
@@ -67,11 +93,45 @@ public final class ClientEvents {
         if (event.getEntity().getMainHandItem().getItem() instanceof CurvePlannerItem) ClientHooks.sendUndoPoint();
     }
 
+    private static void roadHud(Minecraft mc, GuiGraphics g, ItemStack stack) {
+        RoadPlannerState state = RoadPlannerItem.getState(stack);
+        RoadNetwork net = RoadClientCache.named(state.network());
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.translatable("curvegen.road.hud.title").withStyle(ChatFormatting.AQUA));
+        if (net == null) {
+            lines.add(Component.translatable("curvegen.road.hud.no_network").withStyle(ChatFormatting.YELLOW));
+        } else {
+            lines.add(Component.translatable("curvegen.road.hud.network", net.name(), net.ownerName(), net.nodes().size(), net.links().size()));
+            RoadNode sel = net.nodes().get(state.selectedNode());
+            lines.add(Component.translatable("curvegen.road.hud.selected", sel == null ? "-" : sel.id() + " (" + describeNode(net, sel) + ")").withStyle(ChatFormatting.YELLOW));
+            PreviewManager.Stats stats = PreviewManager.stats();
+            lines.add(Component.translatable("curvegen.road.hud.stats", stats.blocks(), stats.layers()));
+            for (String w : stats.warnings()) lines.add(Component.literal(w).withStyle(ChatFormatting.GOLD));
+        }
+        if (!previewEnabled) lines.add(Component.translatable("curvegen.hud.preview_off").withStyle(ChatFormatting.RED));
+        lines.add(Component.translatable("curvegen.road.hud.help").withStyle(ChatFormatting.GRAY));
+        int y = 4;
+        for (Component c : lines) { g.drawString(mc.font, c, 4, y, 0xFFFFFF, true); y += 10; }
+    }
+
+    public static String describeNode(RoadNetwork net, RoadNode n) {
+        if (n.kind() == com.aleksalfi.curvegen.road.NodeKind.ROUNDABOUT) return "roundabout r" + (int) n.roundaboutRadius();
+        int deg = net.degree(n.id());
+        if (deg >= 3) return "junction, " + deg + " arms";
+        if (deg == 2) return n.corner() == com.aleksalfi.curvegen.road.CornerStyle.SMOOTH ? "smooth" : "fillet r" + (int) n.filletRadius();
+        return deg == 1 ? "end" : "unlinked";
+    }
+
     @SubscribeEvent
     public static void onRenderGui(RenderGuiEvent.Post event) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.options.hideGui || mc.screen != null || mc.getDebugOverlay().showDebugScreen()) return;
         ItemStack held = CurvePlannerItem.held(mc.player);
+        ItemStack roadHeld = RoadPlannerItem.held(mc.player);
+        if (roadHeld != null && !(mc.player.getMainHandItem().getItem() instanceof CurvePlannerItem)) {
+            roadHud(mc, event.getGuiGraphics(), roadHeld);
+            return;
+        }
         if (held == null) return;
         CurvePlan plan = CurvePlannerItem.getPlan(held);
         List<Component> lines = new ArrayList<>();

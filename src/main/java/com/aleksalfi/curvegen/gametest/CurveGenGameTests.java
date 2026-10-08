@@ -117,6 +117,37 @@ public class CurveGenGameTests {
     }
 
     @GameTest(template = "empty")
+    public static void roadNetworkWithJunctionPlacesLanesLinesAndSidewalks(GameTestHelper helper) {
+        BlockPos o = helper.absolutePos(BlockPos.ZERO);
+        // T-junction inside the 40x40 template: main road east-west at z=20, side road south from x=20.
+        com.aleksalfi.curvegen.road.RoadNetwork network = com.aleksalfi.curvegen.road.RoadNetwork.empty("test")
+                .addNode(o.getX() + 2.5, o.getY() + 3, o.getZ() + 20.5).addNode(o.getX() + 30.5, o.getY() + 3, o.getZ() + 20.5)
+                .addNode(o.getX() + 38.5, o.getY() + 3, o.getZ() + 20.5).addNode(o.getX() + 30.5, o.getY() + 3, o.getZ() + 38.5)
+                .addLink(1, 2, "street").addLink(2, 3, "street").addLink(2, 4, "street");
+        network = network.putNode(network.nodes().get(2).withArm(7, new com.aleksalfi.curvegen.road.ArmSettings(com.aleksalfi.curvegen.road.ArmPriority.STOP, false)));
+        com.aleksalfi.curvegen.road.RoadCompiler.Result result = com.aleksalfi.curvegen.road.RoadCompiler.compile(network, helper.getLevel());
+        BlockPlan blocks = result.blocks();
+        if (blocks.isEmpty()) helper.fail("no road blocks generated: " + blocks.warnings());
+        WorldPlacer.Report report = WorldPlacer.place(helper.getLevel(), blocks, null, UUID.randomUUID());
+        if (report.placed() != blocks.size()) helper.fail("placed " + report.placed() + " of " + blocks.size());
+        // Street: lane 6, sidewalk 3, curb 1 (no edge lines). Surface blocks sit at y+2 (height y+3 -> top-1).
+        helper.assertBlockPresent(Blocks.GRAY_CONCRETE, new BlockPos(10, 2, 23)); // right lane of the main road
+        helper.assertBlockPresent(Blocks.GRAY_CONCRETE, new BlockPos(30, 2, 20)); // junction core
+        helper.assertBlockPresent(Blocks.GRAY_CONCRETE, new BlockPos(30, 2, 30)); // side road, still inside the core
+        helper.assertBlockPresent(Blocks.STONE_BRICKS, new BlockPos(10, 2, 13)); // curb north side: lateral 6.5..7.5 -> z = 13
+        helper.assertBlockPresent(Blocks.SMOOTH_STONE, new BlockPos(10, 2, 11)); // sidewalk
+        // Raised sidewalk: a copycat layer on top of the sidewalk block
+        BlockState above = helper.getBlockState(new BlockPos(10, 3, 11));
+        if (!CopycatSupport.isLayer(above) || above.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING) != Direction.UP)
+            helper.fail("expected an upward copycat layer on the sidewalk, got " + above);
+        // Centre line of the main road far from the junction must contain white (dashed)
+        boolean white = false;
+        for (int x = 3; x < 9; x++) white |= helper.getBlockState(new BlockPos(x, 2, 20)).is(Blocks.WHITE_CONCRETE);
+        if (!white) helper.fail("no centre line found on the main road");
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty")
     public static void rampUsesUpwardLayers(GameTestHelper helper) {
         BlockPos a = helper.absolutePos(new BlockPos(3, 2, 10));
         BlockPos b = helper.absolutePos(new BlockPos(35, 6, 10));

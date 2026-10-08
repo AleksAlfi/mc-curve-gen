@@ -29,13 +29,17 @@ public class CurveGen {
         NeoForge.EVENT_BUS.addListener(CurveGen::onLeftClickBlock);
         NeoForge.EVENT_BUS.addListener(CurveGen::onEquipmentChange);
         NeoForge.EVENT_BUS.addListener(CurveGenCommands::register);
+        NeoForge.EVENT_BUS.addListener(RoadCommands::register);
         NeoForge.EVENT_BUS.addListener(CurveGen::onPlayerTick);
         NeoForge.EVENT_BUS.addListener(com.aleksalfi.curvegen.build.WorldPlacer::onEntityJoin);
         NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.server.ServerStoppingEvent e) -> com.aleksalfi.curvegen.build.WorldPlacer.clearAll());
     }
 
     private static void addCreative(BuildCreativeModeTabContentsEvent event) {
-        if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) event.accept(ModRegistry.CURVE_PLANNER);
+        if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
+            event.accept(ModRegistry.CURVE_PLANNER);
+            event.accept(ModRegistry.ROAD_PLANNER);
+        }
     }
 
     /** Left-clicking with the planner undoes the last point instead of breaking the block. */
@@ -59,6 +63,9 @@ public class CurveGen {
 
     private static void onEquipmentChange(LivingEquipmentChangeEvent event) {
         if (event.getSlot() != EquipmentSlot.MAINHAND && event.getSlot() != EquipmentSlot.OFFHAND) return;
-        if (event.getEntity() instanceof ServerPlayer player) CreateCompat.onHandItemChanged(player, event.getTo());
+        if (event.getEntity() instanceof ServerPlayer player) {
+            CreateCompat.onHandItemChanged(player, event.getTo());
+            if (event.getTo().getItem() instanceof com.aleksalfi.curvegen.item.RoadPlannerItem) com.aleksalfi.curvegen.road.RoadService.sync(player);
+        }
     }
 }

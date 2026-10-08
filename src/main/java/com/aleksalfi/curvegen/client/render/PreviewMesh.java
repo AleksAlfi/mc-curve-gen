@@ -1,11 +1,7 @@
 package com.aleksalfi.curvegen.client.render;
 
-import com.aleksalfi.curvegen.build.PlanCompiler;
 import com.aleksalfi.curvegen.build.PlannedBlock;
 import com.aleksalfi.curvegen.geom.Polyline;
-import com.aleksalfi.curvegen.plan.CurvePlan;
-import com.aleksalfi.curvegen.plan.PlanPoint;
-import com.aleksalfi.curvegen.plan.SegmentSpec;
 import com.aleksalfi.curvegen.build.CopycatSupport;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
@@ -24,7 +20,6 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import java.util.Map;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
 
 /** GPU buffers for the translucent block preview plus the centerline and point markers. */
 public final class PreviewMesh implements AutoCloseable {
@@ -42,12 +37,12 @@ public final class PreviewMesh implements AutoCloseable {
     /** Blocks beyond this are not drawn (the plan itself is still complete); keeps GPU memory bounded. */
     public static final int MAX_BLOCKS = 300_000;
 
-    public static PreviewMesh build(PlanCompiler.Result result, CurvePlan plan) {
-        BlockPos origin = result.blocks().isEmpty() ? firstPointPos(plan) : result.blocks().min();
-        VertexBuffer quads = buildQuads(result, origin);
+    public static PreviewMesh build(Compiled c) {
+        BlockPos origin = c.blocks().isEmpty() ? firstMarkerPos(c) : c.blocks().min();
+        VertexBuffer quads = buildQuads(c, origin);
         VertexBuffer lines;
         try {
-            lines = buildLines(result, plan, origin);
+            lines = buildLines(c, origin);
         } catch (RuntimeException e) {
             if (quads != null) quads.close();
             throw e;
@@ -55,14 +50,18 @@ public final class PreviewMesh implements AutoCloseable {
         return new PreviewMesh(origin, quads, lines);
     }
 
-    private static BlockPos firstPointPos(CurvePlan plan) {
-        PlanPoint p = plan.firstPoint();
-        return p == null ? BlockPos.ZERO : BlockPos.containing(p.x(), p.y(), p.z());
+    private static BlockPos firstMarkerPos(Compiled c) {
+        if (!c.markers().isEmpty()) {
+            Compiled.Marker m = c.markers().get(0);
+            return BlockPos.containing(m.x(), m.y(), m.z());
+        }
+        for (Polyline l : c.lines()) if (l.size > 0) return BlockPos.containing(l.x[0], l.y[0], l.z[0]);
+        return BlockPos.ZERO;
     }
 
     @Nullable
-    private static VertexBuffer buildQuads(PlanCompiler.Result result, BlockPos origin) {
-        Map<BlockPos, PlannedBlock> blocks = result.blocks().blocks();
+    private static VertexBuffer buildQuads(Compiled c, BlockPos origin) {
+        Map<BlockPos, PlannedBlock> blocks = c.blocks().blocks();
         if (blocks.isEmpty()) return null;
         int budget = Math.min(blocks.size(), MAX_BLOCKS);
         // Private buffer (not the shared Tesselator) so a failure or a huge mesh never pollutes other rendering.
@@ -103,42 +102,36 @@ public final class PreviewMesh implements AutoCloseable {
     }
 
     @Nullable
-    private static VertexBuffer buildLines(PlanCompiler.Result result, CurvePlan plan, BlockPos origin) {
+    private static VertexBuffer buildLines(Compiled c, BlockPos origin) {
         try (ByteBufferBuilder memory = new ByteBufferBuilder(1 << 18)) {
-        BufferBuilder bb = new BufferBuilder(memory, VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
-        boolean any = false;
-        Polyline line = result.centerline();
-        for (int i = 0; i + 1 < line.size; i++) {
-            any = true;
-            float y0 = (float) (line.y[i] + 0.05 - origin.getY()), y1 = (float) (line.y[i + 1] + 0.05 - origin.getY());
-            bb.addVertex((float) (line.x[i] - origin.getX()), y0, (float) (line.z[i] - origin.getZ())).setColor(1f, 0.9f, 0.2f, 1f);
-            bb.addVertex((float) (line.x[i + 1] - origin.getX()), y1, (float) (line.z[i + 1] - origin.getZ())).setColor(1f, 0.9f, 0.2f, 1f);
+            BufferBuilder bb = new BufferBuilder(memory, VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
+            boolean any = false;
+            for (Polyline line : c.lines()) {
+                for (int i = 0; i + 1 < line.size; i++) {
+                    any = true;
+                    float y0 = (float) (line.y[i] + 0.05 - origin.getY()), y1 = (float) (line.y[i + 1] + 0.05 - origin.getY());
+                    bb.addVertex((float) (line.x[i] - origin.getX()), y0, (float) (line.z[i] - origin.getZ())).setColor(1f, 0.9f, 0.2f, 1f);
+                    bb.addVertex((float) (line.x[i + 1] - origin.getX()), y1, (float) (line.z[i + 1] - origin.getZ())).setColor(1f, 0.9f, 0.2f, 1f);
+                }
+            }
+            for (Compiled.Segment3 sg : c.segments()) {
+                any = true;
+                bb.addVertex((float) (sg.x0() - origin.getX()), (float) (sg.y0() - origin.getY()), (float) (sg.z0() - origin.getZ())).setColor(sg.r(), sg.g(), sg.b(), 1f);
+                bb.addVertex((float) (sg.x1() - origin.getX()), (float) (sg.y1() - origin.getY()), (float) (sg.z1() - origin.getZ())).setColor(sg.r(), sg.g(), sg.b(), 1f);
+            }
+            for (Compiled.Marker m : c.markers()) {
+                any = true;
+                float x = (float) (m.x() - origin.getX()), y = (float) (m.y() - origin.getY()), z = (float) (m.z() - origin.getZ());
+                float s = m.size();
+                wireBox(bb, x - s, y - 0.9f, z - s, x + s, y + 0.4f, z + s, m.r(), m.g(), m.b());
+            }
+            MeshData data = bb.build();
+            if (!any) {
+                if (data != null) data.close();
+                return null;
+            }
+            return upload(data);
         }
-        for (int i = 0; i < plan.segments().size(); i++) any |= markers(bb, plan.segments().get(i), origin, false, i == 0);
-        any |= markers(bb, plan.draft(), origin, true, plan.segments().isEmpty());
-        MeshData data = bb.build();
-        if (!any) {
-            if (data != null) data.close();
-            return null;
-        }
-        return upload(data);
-        }
-    }
-
-    private static boolean markers(BufferBuilder bb, SegmentSpec seg, BlockPos origin, boolean draft, boolean first) {
-        boolean any = false;
-        List<PlanPoint> pts = seg.points();
-        int base = first ? 1 : 0;
-        for (int i = 0; i < pts.size(); i++) {
-            PlanPoint p = pts.get(i);
-            boolean control = i > base; // after the (optional) start and the end point come through/control points
-            float r = control ? 1f : 0.2f, g = control ? 0.3f : 1f, b = 1f;
-            if (draft) { r = Math.min(1, r + 0.3f); }
-            float x = (float) (p.x() - origin.getX()), y = (float) (p.y() - origin.getY()), z = (float) (p.z() - origin.getZ());
-            wireBox(bb, x - 0.3f, y - 0.9f, z - 0.3f, x + 0.3f, y + 0.4f, z + 0.3f, r, g, b);
-            any = true;
-        }
-        return any;
     }
 
     private static int colorOf(PlannedBlock block) {

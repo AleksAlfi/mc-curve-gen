@@ -112,6 +112,42 @@ The option commands change the same settings as the options screen, so a whole r
 You can still move or rotate it with Create's own tools before printing; the mod deploys each
 schematic only once.
 
+## Road Planner (networks of roads)
+
+The **Road Planner** (paper + compass, stick + paper, black concrete bottom-left) builds whole road
+networks from nodes instead of single curves. Networks are saved in the world, by name, and belong to
+the player who created them.
+
+1. Sneak + right-click to open the network screen; create a network (or pick one shared with you).
+2. Right-click the ground to place a node. With a node selected, the next node you place is linked to it,
+   so you draw roads like a polyline. Right-click an existing node to select it; right-click another
+   node while one is selected to link (or unlink) them.
+3. Sneak + right-click a node (or use *Edit selected node*) for its settings:
+   * **Kind**: auto (plain pass-through, dead end, or junction when 3+ links meet) or **roundabout**
+     (island radius, 1 or 2 ring lanes, give-way lines at every entry).
+   * **Corner** for pass-through nodes: circular **fillet** with a radius, or **smooth** (spline-like).
+   * **Zebra crossing** at a plain node, or per junction arm (between the stop line and the junction).
+   * Per arm: the link's **road class**, its **priority** (priority road: no line; give way: dashed line;
+     stop: solid line across the entry lanes) and a zebra.
+4. **Road classes** (per network, editable, three by default): lane width (6 / 7 / 8 blocks, sized for
+   Create Aeronautics vehicles), lanes per direction, sidewalk width, curb height (copycat layers),
+   solid edge lines, and the blocks for asphalt, lines, curb and sidewalk. New links use the class marked
+   ★; change a link's class from either end node.
+5. Export, Place, Undo and Deploy work exactly like the curve planner; the preview shows the whole network.
+
+Markings follow simplified EU practice for right-hand traffic: dashed centre line that becomes solid
+in tight bends and on the approach to junctions and roundabouts, dashed lane lines between lanes of the
+same direction (solid centre on multi-lane roads), solid edge lines, stop / give-way lines across the
+entry lanes, zebra stripes 1 block wide, rounded curb corners at every junction.
+
+**Sharing.** The creator owns the network. From the network screen the owner can share it with a player
+(*view* or *edit*), remove a share, or open it to everyone (*Everyone: view / edit*). Operators can see
+and edit every network. Commands: `/roadgen share <player> <view|edit|none>`, `/roadgen public <none|view|edit>`.
+
+`/roadgen` mirrors the whole tool: `create`, `select`, `list`, `info`, `delete`, `node add <pos>`,
+`node select|delete|kind|corner|radius|roundabout|zebra`, `arm <link> priority|zebra`, `link <a> <b>`,
+`linkclass <link> <class>`, `class add|remove|default|set …`, `place`, `undoplace`, `deploy`.
+
 ## Building
 
 ```

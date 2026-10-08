@@ -11,8 +11,9 @@ public final class Rasterizer {
     private Rasterizer() {}
 
     /** Per-column result. Coordinates are block coordinates (floor of world x/z). */
+    /** Per-column result. {@code along} is the distance along the path of the column centre's projection. */
     public record Column(int x, int z, double coverage, int lane, double height, double outwardX, double outwardZ,
-                         double[] laneCoverage) {}
+                         double[] laneCoverage, double along, double lateral) {}
 
     /** Thrown when the path's bounding box has more columns than the caller allows. */
     public static final class PlanTooLargeException extends RuntimeException {
@@ -73,7 +74,7 @@ public final class Rasterizer {
                         double[] laneCov = new double[laneWidths.length];
                         laneCov[lane] = 1;
                         double sign = center.lateral >= 0 ? 1 : -1;
-                        out.add(new Column(bx, bz, 1, lane, center.height, sign * center.tz, sign * -center.tx, laneCov));
+                        out.add(new Column(bx, bz, 1, lane, center.height, sign * center.tz, sign * -center.tx, laneCov, center.along, center.lateral));
                         continue;
                     }
                 }
@@ -104,7 +105,7 @@ public final class Rasterizer {
                 double sign = center.lateral >= 0 ? 1 : -1;
                 // outward = away from the centerline = sign(lateral) * left
                 double ox = sign * center.tz, oz = sign * -center.tx;
-                out.add(new Column(bx, bz, inside / (double) total, bestLane, heightSum / inside, ox, oz, laneCov));
+                out.add(new Column(bx, bz, inside / (double) total, bestLane, heightSum / inside, ox, oz, laneCov, center.along, center.lateral));
             }
         }
         return out;
