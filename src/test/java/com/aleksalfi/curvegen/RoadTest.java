@@ -610,6 +610,10 @@ class RoadTest {
             if (sf == Surface.ASPHALT || sf == Surface.LINE) paved++;
         }
         assertTrue(lines > 5 && paved > 40, "gore should be paved and hatched, lines=" + lines + " paved=" + paved);
+        // The ramp's curb and sidewalk beside the gore are untouched: no raised cell becomes a marking.
+        int raised = 0;
+        for (int x = -60; x <= 0; x++) for (int z = 0; z < 60; z++) { Surface sf = at(cells, x, z); if (sf == Surface.CURB || sf == Surface.SIDEWALK) raised++; }
+        assertTrue(raised > 60, "ramp sidewalk should survive beside the gore, raised=" + raised);
     }
 
     /** An entry followed by an exit within twice the merge length share one continuous weaving lane. */
@@ -694,9 +698,10 @@ class RoadTest {
         // Just past the node the two lanes continue straight: asphalt at the lane centres, a border line between.
         assertEquals(Surface.ASPHALT, at(cells, 6, 4));
         assertEquals(Surface.ASPHALT, at(cells, 6, -4));
-        int lines = 0;
-        for (int x = 15; x < 45; x++) for (int z = -6; z <= 6; z++) if (at(cells, x, z) == Surface.LINE) lines++;
-        assertTrue(lines > 12, "hatched gore between the diverging roads, lines=" + lines);
+        // Between the diverging roads: hatched gore, or the roads' own inner curbs and sidewalks forming an island.
+        int filled = 0;
+        for (int x = 15; x < 45; x++) for (int z = -6; z <= 6; z++) { Surface sf = at(cells, x, z); if (sf == Surface.LINE || sf.raised()) filled++; }
+        assertTrue(filled > 12, "nose between the diverging roads, filled=" + filled);
         // Far away the roads are separate and the ground between is empty.
         assertEquals(Surface.NONE, at(cells, 90, 0));
     }
@@ -725,5 +730,28 @@ class RoadTest {
         int auxZ = (int) Math.floor(0.5 + m.auxCentre());
         Surface sAux = at(cells, 30, auxZ);
         assertTrue(sAux == Surface.ASPHALT || sAux == Surface.LINE);
+    }
+
+    /** Class order is stable through copies, codec round trips and edits, so cycling visits every class. */
+    @Test
+    void classOrderIsStable() {
+        RoadNetwork net = RoadNetwork.empty("x");
+        List<String> order = new java.util.ArrayList<>(net.classes().keySet());
+        assertEquals(3, order.size());
+        RoadNetwork edited = net.withDefaultClass(order.get(1)).addNode(0, 64, 0).putClass(net.classes().get(order.get(0)).withName("Renamed"));
+        assertEquals(order, new java.util.ArrayList<>(edited.classes().keySet()));
+        RoadNetwork decoded = new RoadNetwork(edited.name(), edited.classes(), edited.nodes(), edited.links(), edited.nextId(), edited.nextLinkId(),
+                edited.defaultClass(), edited.owner(), edited.shares(), edited.playerNames(), edited.publicAccess());
+        assertEquals(order, new java.util.ArrayList<>(decoded.classes().keySet()));
+        // Cycling "next class" from each class visits all three.
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        String cur = decoded.defaultClass();
+        for (int i = 0; i < 3; i++) {
+            List<String> ids = new java.util.ArrayList<>(decoded.classes().keySet());
+            cur = ids.get((ids.indexOf(cur) + 1) % ids.size());
+            decoded = decoded.withDefaultClass(cur);
+            seen.add(cur);
+        }
+        assertEquals(3, seen.size());
     }
 }

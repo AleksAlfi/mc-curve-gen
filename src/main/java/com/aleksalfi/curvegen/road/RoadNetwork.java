@@ -23,11 +23,13 @@ public record RoadNetwork(String name, Map<String, RoadClass> classes, Map<Integ
     public static final int MAX_CLASSES = 16;
 
     public RoadNetwork {
-        classes = Map.copyOf(new LinkedHashMap<>(classes));
-        nodes = Map.copyOf(new LinkedHashMap<>(nodes));
-        links = Map.copyOf(new LinkedHashMap<>(links));
-        shares = Map.copyOf(new LinkedHashMap<>(shares));
-        playerNames = Map.copyOf(new LinkedHashMap<>(playerNames));
+        // Insertion order matters (class buttons, "next class" cycling, chain building), and Map.copyOf
+        // would scramble it, so keep unmodifiable LinkedHashMaps.
+        classes = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(classes));
+        nodes = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(nodes));
+        links = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(links));
+        shares = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(shares));
+        playerNames = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(playerNames));
         if (owner == null) owner = "";
     }
 

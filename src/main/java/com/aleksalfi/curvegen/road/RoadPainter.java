@@ -285,7 +285,7 @@ public final class RoadPainter {
                     if (!done.add(k)) continue;
                     double y = RoadGeometry.heightAt(hw.line(), q);
                     Cell existing = cells.at(k, y);
-                    if (existing != null && existing.carriageway() && existing.chainId != ramp.id() && existing.chainId != hw.id()) continue;
+                    if (existing != null && (existing.surface.raised() || (existing.carriageway() && existing.chainId != ramp.id() && existing.chainId != hw.id()))) continue;
                     boolean border = t >= inner - 1;
                     boolean stripe = Math.floorMod((int) Math.floor(s - 2 * t), 6) < 2; // diagonal bars, 2-block runs
                     Surface surface = border || stripe ? Surface.LINE : Surface.ASPHALT;
@@ -325,7 +325,7 @@ public final class RoadPainter {
                     if (!done.add(k)) continue;
                     double y = RoadGeometry.heightAt(outChain.line(), q);
                     Cell existing = cells.at(k, y);
-                    if (existing != null && existing.carriageway() && existing.chainId != outChain.id() && existing.chainId != inChain.id()) continue;
+                    if (existing != null && (existing.surface.raised() || (existing.carriageway() && existing.chainId != outChain.id() && existing.chainId != inChain.id()))) continue;
                     boolean border = t <= lo + 1 || t >= hi - 1;
                     boolean stripe = Math.floorMod((int) Math.floor(s - 2 * t), 6) < 2;
                     cells.put(k, new Cell(border || stripe ? Surface.LINE : Surface.ASPHALT, sp.cls(), y, 1, 0, 0, -1));
