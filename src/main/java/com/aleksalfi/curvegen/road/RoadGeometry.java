@@ -20,15 +20,35 @@ public final class RoadGeometry {
 
     public static final double SAMPLE_STEP = 0.5;
 
-    /** Whether a road simply passes through this node (two links of the same class, not a roundabout). */
+    /** Whether a road simply passes through this node (exactly two links, not a roundabout); the classes may differ. */
     public static boolean passThrough(RoadNetwork net, RoadNode node) {
         if (node.kind() == NodeKind.ROUNDABOUT) return false;
-        List<RoadLink> links = net.linksOf(node.id());
-        return links.size() == 2 && links.get(0).classId().equals(links.get(1).classId());
+        return net.linksOf(node.id()).size() == 2;
     }
 
     public static boolean isJunction(RoadNetwork net, RoadNode node) {
-        return node.kind() != NodeKind.ROUNDABOUT && net.degree(node.id()) >= 3;
+        return node.kind() != NodeKind.ROUNDABOUT && net.degree(node.id()) >= 3 && Merge.at(net, node) == null && Split.at(net, node) == null;
+    }
+
+    /** Whether a chain travelling along {@code in} into {@code node} may continue along {@code out}: same mode, consistent direction. */
+    private static boolean continues(RoadLink in, RoadLink out, int nodeId) {
+        if (in.oneWay() != out.oneWay()) return false;
+        return !in.oneWay() || (in.arrives(nodeId) && out.leaves(nodeId));
+    }
+
+    /**
+     * The link a chain continues along after arriving at {@code node} by {@code in}: the other link of a
+     * pass-through node, the other through arm of a ramp merge, otherwise none (the chain ends).
+     */
+    private static RoadLink continuation(RoadNetwork net, RoadNode node, RoadLink in, Set<Integer> usedLinks) {
+        if (passThrough(net, node)) {
+            for (RoadLink l : net.linksOf(node.id())) if (l.id() != in.id() && !usedLinks.contains(l.id()) && continues(in, l, node.id())) return l;
+            return null;
+        }
+        Merge m = Merge.at(net, node);
+        if (m == null) return null;
+        RoadLink other = in.id() == m.forward().id() ? m.back() : in.id() == m.back().id() ? m.forward() : null;
+        return other != null && !usedLinks.contains(other.id()) && continues(in, other, node.id()) ? other : null;
     }
 
     /** Gradient of a junction's or roundabout's core plane (zero for plain nodes). */
@@ -74,19 +94,29 @@ public final class RoadGeometry {
         List<RoadChain> out = new ArrayList<>();
         Set<Integer> usedLinks = new HashSet<>();
         int chainId = 0;
-        // Chains start at nodes that are not pass-through.
-        for (RoadNode start : net.nodes().values()) {
+        // Deterministic order (lowest ids first) so a chain's orientation does not depend on map iteration.
+        List<RoadNode> nodesById = new ArrayList<>(net.nodes().values());
+        nodesById.sort(java.util.Comparator.comparingInt(RoadNode::id));
+        List<RoadLink> linksById = new ArrayList<>(net.links().values());
+        linksById.sort(java.util.Comparator.comparingInt(RoadLink::id));
+        // Chains start at nodes that are not pass-through. At a ramp merge only the ramp starts a chain here:
+        // the through road runs through the node as one chain, started from wherever it really ends.
+        for (RoadNode start : nodesById) {
             if (passThrough(net, start)) continue;
-            for (RoadLink first : net.linksOf(start.id())) {
+            Merge m = Merge.at(net, start);
+            List<RoadLink> arms = new ArrayList<>(m != null ? List.of(m.ramp()) : net.linksOf(start.id()));
+            arms.sort(java.util.Comparator.comparingInt(RoadLink::id));
+            for (RoadLink first : arms) {
                 if (usedLinks.contains(first.id())) continue;
+                if (!first.leaves(start.id())) continue; // one-way chains run with the traffic: started from their from-node
                 RoadChain chain = walk(net, start, first, usedLinks, chainId);
                 if (chain != null) { out.add(chain); chainId++; }
             }
         }
-        // Closed loops made only of pass-through nodes.
-        for (RoadLink link : net.links().values()) {
+        // Closed loops, and through roads whose both ends are ramp merges.
+        for (RoadLink link : linksById) {
             if (usedLinks.contains(link.id())) continue;
-            RoadNode start = net.nodes().get(link.a());
+            RoadNode start = net.nodes().get(link.from());
             RoadChain chain = walk(net, start, link, usedLinks, chainId);
             if (chain != null) { out.add(chain); chainId++; }
         }
@@ -106,10 +136,8 @@ public final class RoadGeometry {
             if (next == null) return null;
             nodeIds.add(next.id());
             node = next;
-            if (!passThrough(net, node) || node.id() == start.id()) break;
-            RoadLink cont = null;
-            for (RoadLink l : net.linksOf(node.id())) if (l.id() != link.id() && !usedLinks.contains(l.id())) cont = l;
-            link = cont;
+            if (node.id() == start.id()) break;
+            link = continuation(net, node, link, usedLinks);
         }
         return build(net, chainId, nodeIds, linkIds);
     }
@@ -120,6 +148,9 @@ public final class RoadGeometry {
     private static RoadChain build(RoadNetwork net, int chainId, List<Integer> nodeIds, List<Integer> linkIds) {
         if (nodeIds.size() < 2) return null;
         RoadClass cls = net.classOf(net.links().get(linkIds.get(0)));
+        boolean oneWay = net.links().get(linkIds.get(0)).oneWay();
+        List<RoadClass> linkClasses = new ArrayList<>();
+        for (int linkId : linkIds) linkClasses.add(net.classOf(net.links().get(linkId)));
         List<RoadNode> nodes = new ArrayList<>();
         for (int id : nodeIds) nodes.add(net.nodes().get(id));
         // A closed loop of plain nodes: the start node is a corner like every other, so the chain is laid
@@ -145,6 +176,20 @@ public final class RoadGeometry {
         RoadNode last = nodes.get(nodes.size() - 1);
         Vec2 d0 = nodes.get(1).xz().sub(first.xz()).normalize();
         Vec2 dl = last.xz().sub(nodes.get(nodes.size() - 2).xz()).normalize();
+        // A ramp chain starts or ends on the nose of its merge, parallel to the through road; the one-way
+        // roads of a split start or end half a carriageway beside the two-way centre line, parallel to it.
+        Merge mStart = loop ? null : Merge.at(net, first), mEnd = loop ? null : Merge.at(net, last);
+        Split sStart = loop ? null : Split.at(net, first), sEnd = loop ? null : Split.at(net, last);
+        boolean rampStart = mStart != null && mStart.ramp().id() == linkIds.get(0);
+        boolean rampEnd = mEnd != null && mEnd.ramp().id() == linkIds.get(linkIds.size() - 1);
+        boolean splitOut = sStart != null && sStart.out().id() == linkIds.get(0);
+        boolean splitIn = sEnd != null && sEnd.in().id() == linkIds.get(linkIds.size() - 1);
+        Vec2 startPos = rampStart ? mStart.nose() : splitOut ? sStart.outStart() : first.xz();
+        Vec2 endPos = rampEnd ? mEnd.nose() : splitIn ? sEnd.inEnd() : last.xz();
+        if (rampStart) d0 = mStart.entry() ? mStart.d().scale(-1) : mStart.d();
+        if (rampEnd) dl = mEnd.entry() ? mEnd.d() : mEnd.d().scale(-1);
+        if (splitOut) d0 = sStart.d();
+        if (splitIn) dl = sEnd.d().scale(-1);
         // Inside a junction box or roundabout flare the arm must run straight (that is what gets painted there),
         // so a chain leaving such a node gets a straight key at the box edge and corners may only start beyond it.
         double startStraight = loop ? 0 : straightRun(net, first, nodes.get(1));
@@ -160,7 +205,7 @@ public final class RoadGeometry {
             }
         }
         if (loop) keys.add(new Key(first.xz().lerp(nodes.get(1).xz(), 0.5), d0, (first.y() + nodes.get(1).y()) / 2));
-        else keys.add(new Key(first.xz(), d0, first.y()));
+        else keys.add(new Key(startPos, d0, first.y()));
         keyNode.add(0);
         arcAfterKey.add(null);
         if (startStraight > 0) {
@@ -204,7 +249,7 @@ public final class RoadGeometry {
             keys.add(new Key(t2, d2, y2));
             keyNode.add(-1);
             arcAfterKey.add(null);
-            if (r < 3 * cls.laneWidth()) solid.add(new double[]{-1, -1, keys.size() - 2}); // resolved below (arc index)
+            if (r < 3 * classOfNode(linkClasses, nodes, i, loop).laneWidth()) solid.add(new double[]{-1, -1, keys.size() - 2}); // resolved below (arc index)
             if (node.zebra()) zebras.add(null);
         }
         if (endStraight > 0) {
@@ -214,7 +259,7 @@ public final class RoadGeometry {
             arcAfterKey.add(null);
         }
         if (loop) keys.add(new Key(nodes.get(nodes.size() - 2).xz().lerp(last.xz(), 0.5), dl, (last.y() + nodes.get(nodes.size() - 2).y()) / 2));
-        else keys.add(new Key(last.xz(), dl, last.y()));
+        else keys.add(new Key(endPos, dl, last.y()));
         keyNode.add(nodes.size() - 1);
         arcAfterKey.add(null);
 
@@ -283,11 +328,25 @@ public final class RoadGeometry {
             zi++;
         }
         double startBox = boxRadius(net, first), endBox = boxRadius(net, last);
+        // Along-position of every node and the width profile (class tapers) of the chain.
+        double[] nodeAlong = new double[nodeIds.size()];
+        for (int i = 0; i < nodeIds.size(); i++) {
+            RoadNode n = net.nodes().get(nodeIds.get(i));
+            nodeAlong[i] = i == 0 && !loop ? 0 : i == nodeIds.size() - 1 && !loop ? line.totalLength() : alongOf(line, n.xz());
+        }
+        if (loop) nodeAlong[nodeAlong.length - 1] = line.totalLength();
+        TaperProfile profile = new TaperProfile(nodeAlong, linkClasses, oneWay);
+        solidRanges.addAll(profile.taperRanges());
+        // The two-way road approaching a split gets a solid centre line.
+        if (sStart != null && sStart.twoWay().id() == linkIds.get(0)) solidRanges.add(new double[]{0, 4.0 * cls.laneWidth()});
+        if (sEnd != null && sEnd.twoWay().id() == linkIds.get(linkIds.size() - 1)) solidRanges.add(new double[]{line.totalLength() - 4.0 * cls.laneWidth(), line.totalLength()});
+        addAuxLanes(net, nodeIds, nodes, nodeAlong, line.totalLength(), profile, loop);
         RoadChain.CrossSlope startCross = loop || startStraight <= 0 ? RoadChain.CrossSlope.NONE
                 : new RoadChain.CrossSlope(coreGradient(net, first).dot(d0.left()), startStraight);
         RoadChain.CrossSlope endCross = loop || endStraight <= 0 ? RoadChain.CrossSlope.NONE
                 : new RoadChain.CrossSlope(coreGradient(net, last).dot(dl.left()), endStraight);
-        return new RoadChain(chainId, cls, nodeIds, linkIds, line, startBox, endBox, solidRanges, zebraAlong, corners, startCross, endCross);
+        return new RoadChain(chainId, cls, nodeIds, linkIds, line, startBox, endBox, solidRanges, zebraAlong, corners, startCross, endCross,
+                nodeAlong, linkClasses, profile, oneWay);
     }
 
     /**
@@ -347,6 +406,19 @@ public final class RoadGeometry {
         }
     }
 
+    /** Position, direction and height on the polyline at an along-distance: {x, z, tx, tz, y}. */
+    public static double[] pointAt(Polyline line, double s) {
+        int i = 0;
+        while (i + 2 < line.size && line.s[i + 1] <= s) i++;
+        if (i + 1 >= line.size) return new double[]{line.x[line.size - 1], line.z[line.size - 1], 1, 0, line.y[line.size - 1]};
+        double ds = line.s[i + 1] - line.s[i];
+        double f = ds < 1e-9 ? 0 : Math.max(0, Math.min(1, (s - line.s[i]) / ds));
+        double tx = line.x[i + 1] - line.x[i], tz = line.z[i + 1] - line.z[i];
+        double tl = Math.hypot(tx, tz);
+        if (tl < 1e-9) { tx = 1; tz = 0; } else { tx /= tl; tz /= tl; }
+        return new double[]{line.x[i] + (line.x[i + 1] - line.x[i]) * f, line.z[i] + (line.z[i + 1] - line.z[i]) * f, tx, tz, line.y[i] + (line.y[i + 1] - line.y[i]) * f};
+    }
+
     /** Height of the polyline vertex closest to a point. */
     public static double heightAt(Polyline line, Vec2 p) {
         double best = Double.MAX_VALUE, y = 0;
@@ -356,6 +428,50 @@ public final class RoadGeometry {
             if (d < best) { best = d; y = line.y[i]; }
         }
         return y;
+    }
+
+    /**
+     * Acceleration and deceleration lanes for every ramp merge this chain runs through, on the ramp's side.
+     * An entry's lane runs forward from the node, an exit's lane ends at it; when an entry's lane would
+     * reach the next exit on the same side within twice the merge length, the two become one weaving lane.
+     */
+    private static void addAuxLanes(RoadNetwork net, List<Integer> nodeIds, List<RoadNode> nodes, double[] nodeAlong, double length,
+                                    TaperProfile profile, boolean loop) {
+        if (loop) return;
+        List<TaperProfile.AuxLane> lanes = new ArrayList<>();
+        for (int i = 1; i < nodeIds.size() - 1; i++) {
+            RoadNode node = net.nodes().get(nodeIds.get(i));
+            Merge m = Merge.at(net, node);
+            if (m == null) continue;
+            RoadNode nextNode = net.nodes().get(nodeIds.get(i + 1));
+            boolean forward = nextNode.xz().sub(node.xz()).dot(m.d()) > 0; // chain runs along the carriageway's travel direction
+            boolean rightSide = forward; // the ramp is on the right of d: on the chain's right only when the chain runs along d
+            double L = m.highway().mergeLength(), lw = m.highway().laneWidth();
+            double s = nodeAlong[i];
+            boolean after = m.entry() == forward; // entry lane lies ahead along d; exit lane behind
+            if (after) lanes.add(new TaperProfile.AuxLane(rightSide, s, Math.min(length, s + L), false, s + L < length, lw));
+            else lanes.add(new TaperProfile.AuxLane(rightSide, Math.max(0, s - L), s, s - L > 0, false, lw));
+        }
+        lanes.sort(java.util.Comparator.comparingDouble(TaperProfile.AuxLane::start));
+        // Weaving: join lanes on the same side whose gap (node to node) is under twice the merge length.
+        List<TaperProfile.AuxLane> merged = new ArrayList<>();
+        for (TaperProfile.AuxLane a : lanes) {
+            TaperProfile.AuxLane prev = merged.isEmpty() ? null : merged.get(merged.size() - 1);
+            if (prev != null && prev.rightSide() == a.rightSide() && prev.taperOut() && a.taperIn()
+                    && a.end() - prev.start() < 2 * Math.max(prev.end() - prev.start(), a.end() - a.start()) + 1e-6) {
+                merged.set(merged.size() - 1, new TaperProfile.AuxLane(a.rightSide(), prev.start(), a.end(), prev.taperIn(), a.taperOut(), Math.max(prev.laneWidth(), a.laneWidth())));
+            } else {
+                merged.add(a);
+            }
+        }
+        for (TaperProfile.AuxLane a : merged) profile.addAuxLane(a);
+    }
+
+    /** Class of the link arriving at node index {@code i} of the (possibly loop-extended) node list. */
+    private static RoadClass classOfNode(List<RoadClass> linkClasses, List<RoadNode> nodes, int i, boolean loop) {
+        int link = loop ? i - 1 : i - 1; // the loop list is shifted by one node, so link i-1 arrives at nodes[i] in both cases
+        if (loop) link = Math.floorMod(i - 2, linkClasses.size());
+        return linkClasses.get(Math.max(0, Math.min(linkClasses.size() - 1, link)));
     }
 
     /** Along-distance of the polyline vertex closest to a point. */

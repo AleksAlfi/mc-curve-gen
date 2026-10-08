@@ -62,8 +62,14 @@ public final class RoadService {
         p.displayClientMessage(Component.translatable(key, args), true);
     }
 
-    /** Applies an edit from the player; returns false when refused. */
-    public static boolean apply(ServerPlayer player, ItemStack planner, RoadEdit edit) {
+    /** Applies an edit sent by the player's client; returns false when refused. */
+    public static boolean apply(ServerPlayer player, ItemStack planner, RoadEdit edit) { return apply(player, planner, edit, false); }
+
+    /**
+     * Applies an edit; {@code trusted} edits (commands, functions) may place nodes anywhere in the world,
+     * client clicks only within long click range of the player.
+     */
+    public static boolean apply(ServerPlayer player, ItemStack planner, RoadEdit edit, boolean trusted) {
         RoadNetworks all = RoadNetworks.get(player.server);
         RoadPlannerState state = RoadPlannerItem.getState(planner);
         UUID uuid = player.getUUID();
@@ -122,7 +128,7 @@ public final class RoadService {
         RoadNetwork next = net;
         switch (edit.op()) {
             case NODE_ADD -> {
-                if (edit.node().isEmpty() || !validPosition(player, edit.node().get())) return false;
+                if (edit.node().isEmpty() || !validPosition(player, edit.node().get(), trusted)) return false;
                 RoadNode p = edit.node().get();
                 next = net.addNode(p.x(), p.y(), p.z());
                 if (next == net) { overlay(player, "curvegen.road.node_limit"); return false; }
@@ -134,7 +140,7 @@ public final class RoadService {
                 overlay(player, "curvegen.road.node_added", newId, next.nodes().size());
             }
             case NODE_INSERT -> {
-                if (edit.node().isEmpty() || !validPosition(player, edit.node().get())) return false;
+                if (edit.node().isEmpty() || !validPosition(player, edit.node().get(), trusted)) return false;
                 RoadLink link = net.links().get(edit.id());
                 if (link == null) return false;
                 RoadNode p = edit.node().get();
@@ -147,7 +153,7 @@ public final class RoadService {
                 overlay(player, "curvegen.road.node_inserted", newId, link.id());
             }
             case NODE_MOVE -> {
-                if (edit.node().isEmpty() || !validPosition(player, edit.node().get())) return false;
+                if (edit.node().isEmpty() || !validPosition(player, edit.node().get(), trusted)) return false;
                 RoadNode existing = net.nodes().get(edit.id());
                 if (existing == null) return false;
                 RoadNode p = edit.node().get();
@@ -175,6 +181,11 @@ public final class RoadService {
                 next = net.putLink(link.withClassId(edit.text()));
             }
             case LINK_DELETE -> next = net.removeLink(edit.id());
+            case LINK_DIR -> {
+                RoadLink link = net.links().get(edit.id());
+                if (link == null) return false;
+                try { next = net.putLink(link.withDir(LinkDir.valueOf(edit.text()))); } catch (IllegalArgumentException e) { return false; }
+            }
             case CLASS_PUT -> { if (edit.roadClass().isPresent()) next = net.putClass(edit.roadClass().get()); }
             case CLASS_REMOVE -> next = net.removeClass(edit.text());
             case CLASS_DEFAULT -> next = net.withDefaultClass(edit.text());
@@ -207,7 +218,7 @@ public final class RoadService {
         return switch (edit.op()) {
             case NODE_UPDATE -> "node:" + edit.id();
             case CLASS_PUT -> "class:" + edit.roadClass().map(RoadClass::id).orElse("");
-            case LINK_CLASS -> "link:" + edit.id();
+            case LINK_CLASS, LINK_DIR -> "link:" + edit.id();
             default -> null;
         };
     }
@@ -236,13 +247,16 @@ public final class RoadService {
         return true;
     }
 
-    /** Positions must be finite, inside the world and within long click range of the player. */
-    private static boolean validPosition(ServerPlayer player, RoadNode p) {
+    /** Positions must be finite and inside the world; untrusted ones also within long click range of the player. */
+    private static boolean validPosition(ServerPlayer player, RoadNode p, boolean trusted) {
         if (!Double.isFinite(p.x()) || !Double.isFinite(p.y()) || !Double.isFinite(p.z())) return false;
         net.minecraft.world.level.Level level = player.level();
         if (p.y() < level.getMinBuildHeight() || p.y() > level.getMaxBuildHeight() + 1) return false;
+        if (!level.getWorldBorder().isWithinBounds(p.x(), p.z())) return false;
+        if (trusted) return true;
         double dx = p.x() - player.getX(), dz = p.z() - player.getZ();
-        return dx * dx + dz * dz <= 320 * 320;
+        if (dx * dx + dz * dz > 320 * 320) { overlay(player, "curvegen.road.too_far"); return false; }
+        return true;
     }
 
     public static void place(ServerPlayer player, ItemStack planner) {

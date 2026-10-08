@@ -61,6 +61,8 @@ public class RoadLinkScreen extends Screen implements RoadScreen {
             int idx = ids.indexOf(link.classId());
             ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_CLASS, linkId, ids.get((idx + 1) % ids.size())));
         });
+        button(190, y, W - 8 - 190, Component.translatable("curvegen.road.link.dir." + link.dir().name().toLowerCase(Locale.ROOT), link.a(), link.b()),
+                b -> ClientActions.sendRoadEdit(RoadEdit.of(RoadEdit.Op.LINK_DIR, linkId, link.dir().next().name())));
         y += 24;
         label(8, y, 0x55FFFF, Component.translatable("curvegen.road.link.ends"));
         y += 12;

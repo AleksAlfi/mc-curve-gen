@@ -173,7 +173,7 @@ public final class ClientEvents {
             }
             case ROAD -> {
                 com.aleksalfi.curvegen.road.RoadLink l = net.links().get(t.id());
-                if (l != null) out.add(Component.translatable("curvegen.road.hud.at_road", l.id(), net.classOf(l).name(), l.a(), l.b()).withStyle(ChatFormatting.WHITE));
+                if (l != null) out.add(Component.translatable("curvegen.road.hud.at_road", l.id(), net.classOf(l).name() + (l.oneWay() ? " one-way " + l.from() + "→" + l.to() : ""), l.a(), l.b()).withStyle(ChatFormatting.WHITE));
                 out.add(Component.translatable("curvegen.road.hud.road_help", t.id()).withStyle(ChatFormatting.GRAY));
             }
             case GROUND -> {
@@ -205,6 +205,9 @@ public final class ClientEvents {
 
     public static String describeNode(RoadNetwork net, RoadNode n) {
         if (n.kind() == com.aleksalfi.curvegen.road.NodeKind.ROUNDABOUT) return "roundabout r" + (int) n.roundaboutRadius();
+        com.aleksalfi.curvegen.road.Merge merge = com.aleksalfi.curvegen.road.Merge.at(net, n);
+        if (merge != null) return (merge.entry() ? "entry ramp onto " : "exit ramp from ") + merge.highway().name();
+        if (com.aleksalfi.curvegen.road.Split.at(net, n) != null) return "split into one-way roads";
         int deg = net.degree(n.id());
         if (deg >= 3) return "junction, " + deg + " arms";
         if (deg == 2) return n.corner() == com.aleksalfi.curvegen.road.CornerStyle.SMOOTH ? "smooth" : "fillet r" + (int) n.filletRadius();

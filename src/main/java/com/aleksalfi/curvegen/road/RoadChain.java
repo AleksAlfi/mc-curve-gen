@@ -15,8 +15,18 @@ import java.util.List;
  */
 public record RoadChain(int id, RoadClass roadClass, List<Integer> nodeIds, List<Integer> linkIds, Polyline line,
                         double startBox, double endBox, List<double[]> solidRanges, List<Double> zebras, List<Corner> corners,
-                        CrossSlope startCross, CrossSlope endCross) {
+                        CrossSlope startCross, CrossSlope endCross, double[] nodeAlong, List<RoadClass> linkClasses, TaperProfile profile,
+                        boolean oneWay) {
     public double length() { return line.totalLength(); }
+
+    /** The class of the link at along-position {@code s} (its blocks, dash lengths, approach lengths). */
+    public RoadClass classAt(double s) { return linkClasses.get(profile.linkAt(s)); }
+
+    public double[] widthsAt(double s) { return profile.widthsAt(s); }
+
+    public double halfAt(double s) { return com.aleksalfi.curvegen.geom.Rasterizer.half(profile.widthsAt(s)); }
+
+    public double maxHalf() { return profile.maxHalf(); }
 
     /**
      * Cross slope (rise per block of lateral offset, positive to the left of travel) that the road has at

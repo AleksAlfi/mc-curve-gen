@@ -19,7 +19,7 @@ import java.util.function.UnaryOperator;
 
 /** Editor for one road class. Edits are sent as a whole class record. */
 public class RoadClassScreen extends Screen implements RoadScreen {
-    private static final int W = 360, H = 232;
+    private static final int W = 380, H = 254;
     private final Screen parent;
     private final String classId;
     private int left, top;
@@ -92,6 +92,14 @@ public class RoadClassScreen extends Screen implements RoadScreen {
         Checkbox smooth = addRenderableWidget(Checkbox.builder(Component.translatable("curvegen.road.class.smooth_edges"), font).pos(left + 160, top + y).selected(c.smoothEdges())
                 .onValueChange((cb, v) -> edit(x -> x.withSmoothEdges(v))).build());
         smooth.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("curvegen.road.class.smooth_edges_tip")));
+        y += 22;
+        label(8, y + 5, 0xAAAAAA, Component.translatable("curvegen.road.class.shoulder"));
+        intBox(110, y, 40, c.shoulderWidth(), 0, 8, v -> edit(x -> x.withShoulderWidth(v)));
+        label(160, y + 5, 0xAAAAAA, Component.translatable("curvegen.road.class.merge_length"));
+        intBox(250, y, 40, c.mergeLength(), 20, 200, v -> edit(x -> x.withMergeLength(v)));
+        Checkbox arrows = addRenderableWidget(Checkbox.builder(Component.translatable("curvegen.road.class.arrows"), font).pos(left + 296, top + y).selected(c.paintArrows())
+                .onValueChange((cb, v) -> edit(x -> x.withPaintArrows(v))).build());
+        arrows.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("curvegen.road.class.arrows_tip")));
         y += 22;
         blockRowDirect(y, Component.translatable("curvegen.road.class.asphalt"), c.asphalt(), s -> edit(x -> x.withAsphalt(s)));
         y += 22;

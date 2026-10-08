@@ -25,17 +25,64 @@ public final class Rasterizer {
         }
     }
 
+    /** Lane widths that may change along the path (tapers, merge lanes). Lane count and order are fixed. */
+    public interface WidthProfile {
+        int lanes();
+        /** Widths of every lane at this along-position; zero-width lanes are simply absent there. */
+        double[] widthsAt(double along);
+        /** Largest half width anywhere on the path (either side). */
+        double maxHalf();
+        /**
+         * Index of the lane the path's centre line runs through, or -1 when the cross-section is simply centred
+         * on the path. With a centre lane the layout is anchored on it, so lanes added on one side (an
+         * acceleration lane) do not shift the rest of the road.
+         */
+        default int centreLane() { return -1; }
+    }
+
+    /** The same widths everywhere, centred on the path. */
+    public record FixedWidths(double[] widths) implements WidthProfile {
+        public int lanes() { return widths.length; }
+        public double[] widthsAt(double along) { return widths; }
+        public double maxHalf() { return half(widths); }
+    }
+
+    public static double half(double[] widths) {
+        double t = 0;
+        for (double w : widths) t += w;
+        return t / 2;
+    }
+
+    /** Extent of the cross-section to the left of the centre line (positive lateral). */
+    public static double leftHalf(double[] widths, int centreLane) {
+        if (centreLane < 0) return half(widths);
+        double t = 0;
+        for (int i = 0; i < centreLane; i++) t += widths[i];
+        return t + widths[centreLane] / 2;
+    }
+
+    /** Extent of the cross-section to the right of the centre line (negative lateral). */
+    public static double rightHalf(double[] widths, int centreLane) {
+        if (centreLane < 0) return half(widths);
+        double t = 0;
+        for (int i = centreLane + 1; i < widths.length; i++) t += widths[i];
+        return t + widths[centreLane] / 2;
+    }
+
     public static List<Column> rasterize(Polyline line, double[] laneWidths, int supersample) {
-        return rasterize(line, laneWidths, supersample, Long.MAX_VALUE);
+        return rasterize(line, new FixedWidths(laneWidths), supersample, Long.MAX_VALUE);
     }
 
     public static List<Column> rasterize(Polyline line, double[] laneWidths, int supersample, long maxColumns) {
+        return rasterize(line, new FixedWidths(laneWidths), supersample, maxColumns);
+    }
+
+    public static List<Column> rasterize(Polyline line, WidthProfile profile, int supersample, long maxColumns) {
         List<Column> out = new ArrayList<>();
-        if (line.size < 2 || laneWidths.length == 0) return out;
-        double width = 0;
-        for (double w : laneWidths) width += w;
-        if (width <= 0) return out;
-        double half = width / 2;
+        int lanes = profile.lanes();
+        if (line.size < 2 || lanes == 0) return out;
+        double half = profile.maxHalf();
+        if (half <= 0) return out;
         double margin = half + 1.0;
         PolylineIndex index = new PolylineIndex(line, Math.max(2.0, margin));
 
@@ -64,14 +111,18 @@ public final class Rasterizer {
                 double cx = bx + 0.5, cz = bz + 0.5;
                 PolylineIndex.Hit center = index.nearest(cx, cz, margin);
                 if (!center.found() || center.distance > centerReach) continue;
+                double[] laneWidths = profile.widthsAt(center.along);
+                int cl = profile.centreLane();
+                double lh = leftHalf(laneWidths, cl), rh = rightHalf(laneWidths, cl);
+                if (lh + rh <= 0) continue;
 
                 // Fast path: clearly inside one lane, away from the ends and from corner joins -> no supersampling.
-                if (!center.pastInterior && Math.abs(center.lateral) + inset < half
+                if (!center.pastInterior && center.lateral + inset < lh && -center.lateral + inset < rh
                         && center.along > PolylineIndex.END_EXTENSION + inset && center.toEnd > PolylineIndex.END_EXTENSION + inset
-                        && laneBoundaryDistance(center.lateral, laneWidths, half) > inset) {
-                    int lane = laneFor(center.lateral, laneWidths, half);
+                        && laneBoundaryDistance(center.lateral, laneWidths, lh) > inset) {
+                    int lane = laneFor(center.lateral, laneWidths, lh);
                     if (lane >= 0) {
-                        double[] laneCov = new double[laneWidths.length];
+                        double[] laneCov = new double[lanes];
                         laneCov[lane] = 1;
                         double sign = center.lateral >= 0 ? 1 : -1;
                         out.add(new Column(bx, bz, 1, lane, center.height, sign * center.tz, sign * -center.tx, laneCov, center.along, center.lateral));
@@ -80,7 +131,7 @@ public final class Rasterizer {
                 }
 
                 int inside = 0;
-                double[] laneCount = new double[laneWidths.length];
+                double[] laneCount = new double[lanes];
                 double heightSum = 0;
                 for (int i = 0; i < n; i++) {
                     for (int j = 0; j < n; j++) {
@@ -88,8 +139,10 @@ public final class Rasterizer {
                         PolylineIndex.Hit h = index.nearest(sx, sz, margin);
                         if (!h.found() || h.beyondStart || h.beyondEnd) continue;
                         double d = h.lateral;
-                        if (d > half || d < -half) continue;
-                        int lane = laneFor(d, laneWidths, half);
+                        double[] w = profile.widthsAt(h.along);
+                        double wl = leftHalf(w, cl), wr = rightHalf(w, cl);
+                        if (d > wl || d < -wr) continue;
+                        int lane = laneFor(d, w, wl);
                         if (lane < 0) continue;
                         inside++;
                         laneCount[lane]++;

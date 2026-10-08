@@ -142,15 +142,31 @@ the player who created them.
    * Per arm (node screen) or per end (road screen): **priority** (priority road: no line; give way: dashed
      line; stop: solid line across the entry lanes) and a zebra; the road's **class** from either screen.
    * **Move…** in the node screen does the same without holding: the next right-click drops the node (left-click cancels).
-4. **Road classes** (per network, editable, three by default): lane width (6 / 7 / 8 blocks, sized for
+4. **Direction.** A road is two-way by default. The road screen (left-click a road) or `/roadgen linkdir <road>
+   <twoway|forward|reverse>` makes it one-way; forward runs from the road's first node to its second. A one-way
+   road has all its lanes in one direction with dashed lines between them and no centre line; the preview draws
+   chevrons along it, and a class can paint direction arrows in the lanes (*Arrows*, off by default).
+   * **Split**: where a two-way road meets two one-way roads, one leaving and one arriving, both within 60° of
+     its direction, the lanes run straight into their roads around a hatched nose. A node kind can force
+     (*Split*) or prevent (*Junction*) it.
+   * **Ramp merge**: a road joining a road with 2+ lanes per direction at under 35° (or any one-way road there)
+     becomes an entry or exit ramp: the ramp meets the carriageway at a nose beside the through lanes, with an
+     acceleration lane after an entry or a deceleration lane before an exit (*Merge lane* length per class,
+     default 60), long-dash lane line, hatched gore. An entry followed by an exit within twice that length
+     share one weaving lane. Entry or exit follows the ramp's direction, or its angle for a two-way ramp; the
+     node kind can force either. Right-hand traffic: the ramp must lie to the right of the carriageway it serves.
+   * **Class change** at a node: the wider road tapers into the narrower one over 10 blocks per block of width
+     difference (at least 20), entirely on the wider road's side; curbs and sidewalks switch at the node.
+5. **Road classes** (per network, editable, three by default): lane width (6 / 7 / 8 blocks, sized for
    Create Aeronautics vehicles), lanes per direction, sidewalk width, curb height (copycat layers),
    solid edge lines, smooth edges (sideways copycat layers on the outer edge, off by default; ramps and
-   curbs use upward layers regardless), and the blocks for asphalt, lines, curb and sidewalk. New links use the class marked
+   curbs use upward layers regardless), hard shoulder width (asphalt outside the edge line, 2 on the highway
+   class), merge lane length, direction arrows, and the blocks for asphalt, lines, curb and sidewalk. New links use the class marked
    ★; change a link's class from either end node.
-5. Heights: a road follows a smooth vertical curve between its nodes, so grades change gradually. A junction or
+6. Heights: a road follows a smooth vertical curve between its nodes, so grades change gradually. A junction or
    roundabout sits on a plane that follows the through road's grade up to a 10 % tilt; side roads are level
    through the box and banked at most 10 % to meet it. Grades along a road (ramps) are not limited.
-6. Export, Place, Undo and Deploy work exactly like the curve planner; the preview shows the whole network.
+7. Export, Place, Undo and Deploy work exactly like the curve planner; the preview shows the whole network.
 
 Markings follow simplified EU practice for right-hand traffic: dashed centre line that becomes solid
 in tight bends and on the approach to junctions and roundabouts, dashed lane lines between lanes of the
@@ -163,8 +179,9 @@ and edit every network. Commands: `/roadgen share <player> <view|edit|none>`, `/
 
 `/roadgen` mirrors the whole tool: `create`, `select`, `list`, `info`, `delete`, `undo`, `node add <pos>`,
 `node move <id> <pos>`, `node insert <link> <pos>`, `node select|delete|kind|corner|radius|roundabout|zebra`,
-`arm <link> priority|zebra`, `link <a> <b>`, `linkclass <link> <class>`, `class add|remove|default|set …`,
-`place`, `undoplace`, `deploy`.
+`arm <link> priority|zebra`, `link <a> <b>`, `linkclass <link> <class>`, `linkdir <link> <twoway|forward|reverse>`,
+`class add|remove|default|set …` (incl. `shoulder`, `mergelength`, `arrows`, `smoothedges`), `place`, `undoplace`, `deploy`.
+Node positions given to commands are not range-limited; clicks must be within 320 blocks.
 
 ## Building
 

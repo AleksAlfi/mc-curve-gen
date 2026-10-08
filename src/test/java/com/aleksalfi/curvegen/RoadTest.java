@@ -8,6 +8,9 @@ import com.aleksalfi.curvegen.road.CornerStyle;
 import com.aleksalfi.curvegen.road.Junction;
 import com.aleksalfi.curvegen.road.LaneKind;
 import com.aleksalfi.curvegen.road.LaneProfile;
+import com.aleksalfi.curvegen.road.LinkDir;
+import com.aleksalfi.curvegen.road.Split;
+import com.aleksalfi.curvegen.road.Merge;
 import com.aleksalfi.curvegen.road.NodeKind;
 import com.aleksalfi.curvegen.road.RoadChain;
 import com.aleksalfi.curvegen.road.RoadClass;
@@ -17,6 +20,7 @@ import com.aleksalfi.curvegen.road.RoadNode;
 import com.aleksalfi.curvegen.road.RoadPainter;
 import com.aleksalfi.curvegen.road.Roundabout;
 import com.aleksalfi.curvegen.road.Surface;
+import com.aleksalfi.curvegen.road.TaperProfile;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -42,14 +46,18 @@ class RoadTest {
         assertEquals(2 * street.halfTotal(), p.totalWidth(), 1e-9);
         assertEquals(LaneKind.SIDEWALK, p.kinds()[0]);
         assertEquals(LaneKind.CURB, p.kinds()[1]);
-        assertEquals(LaneKind.LANE, p.kinds()[2]);
-        assertEquals(LaneKind.CENTRE, p.kinds()[3]);
+        assertEquals(LaneKind.CENTRE, p.kinds()[LaneProfile.CENTRE_INDEX]);
         assertEquals(LaneKind.SIDEWALK, p.kinds()[p.kinds().length - 1]);
+        assertEquals(LaneKind.SIDEWALK, p.kindAt(-9));
+        assertEquals(LaneKind.LANE, p.kindAt(-3));
+        assertEquals(LaneKind.CENTRE, p.kindAt(0));
+        assertNull(p.kindAt(11));
         RoadClass hw = RoadClass.highway(); // 2 lanes/dir, edge lines, no sidewalk
         LaneProfile h = LaneProfile.of(hw);
-        assertEquals(LaneKind.EDGE, h.kinds()[0]);
-        assertEquals(LaneKind.LANE_LINE, h.kinds()[2]);
         assertEquals(2 * hw.halfTotal(), h.totalWidth(), 1e-9);
+        assertEquals(LaneKind.EDGE, h.kindAt(-18.5));
+        assertEquals(LaneKind.LANE_LINE, h.kindAt(-9.5));
+        assertEquals(LaneKind.LANE, h.kindAt(-5));
     }
 
     @Test
@@ -455,5 +463,267 @@ class RoadTest {
             return;
         }
         fail("no chain between the two junctions");
+    }
+
+    /** A class change tapers the wider road into the narrower one, entirely on the wider side, with a solid centre. */
+    @Test
+    void classChangeTapersOnTheWiderSide() {
+        RoadNetwork net = RoadNetwork.empty("x").addNode(0.5, 64, 0.5).addNode(100.5, 64, 0.5).addNode(200.5, 64, 0.5)
+                .addLink(1, 2, "main").addLink(2, 3, "street");
+        List<RoadChain> chains = RoadGeometry.chains(net);
+        assertEquals(1, chains.size(), "a class change is a pass-through node");
+        RoadChain c = chains.get(0);
+        double mainHalf = RoadClass.mainRoad().halfTotal(), streetHalf = RoadClass.street().halfTotal(); // 12.5 and 10.5
+        double taper = TaperProfile.taperLength(2 * mainHalf, 2 * streetHalf); // 40
+        assertEquals(mainHalf, c.halfAt(30), 1e-9);
+        assertEquals(streetHalf, c.halfAt(150), 1e-9);
+        // Halfway: the lanes are half way (S-curve), the sidewalk and curb keep full width, the edge line stays.
+        double mid = 100 - taper / 2;
+        double[] w = c.widthsAt(mid);
+        assertEquals(6.5, w[LaneProfile.CENTRE_INDEX - 1], 1e-6, "lane halfway between 7 and 6");
+        assertEquals(1, w[3], 1e-6, "edge line stays through the taper");
+        // Curb and sidewalk are the main road's own all through its taper; the edge line is held; lanes ease.
+        assertEquals(4, w[0] + w[1], 1e-6, "curb + sidewalk at full width");
+        assertEquals(0, w[2], 1e-6, "no verge");
+        assertEquals(0.5 + 1 + 6.5 + 4, c.halfAt(mid), 1e-6);
+        assertEquals(mainHalf, c.halfAt(100 - taper - 1), 1e-9, "no taper on the narrow side");
+        assertEquals(streetHalf, c.halfAt(101), 1e-9);
+        CellMap cells = RoadPainter.paint(net, chains);
+        assertEquals(Surface.SIDEWALK, at(cells, 30, 12));
+        assertEquals(Surface.NONE, at(cells, 30, 13));
+        assertEquals(Surface.SIDEWALK, at(cells, 150, 10));
+        assertEquals(Surface.NONE, at(cells, 150, 11));
+        assertEquals(Surface.SIDEWALK, at(cells, 80, 11), "sidewalk at full width in the taper");
+        assertEquals(Surface.NONE, at(cells, 80, 13), "already narrower in the taper");
+        for (int x = 62; x < 100; x += 4) assertEquals(Surface.LINE, at(cells, x, 0), "solid centre through the taper at x=" + x);
+        assertEquals("main", cells.top(RoadPainter.key(90, 0)).cls.id(), "taper uses the wider class's blocks");
+        assertEquals("street", cells.top(RoadPainter.key(110, 0)).cls.id());
+    }
+
+    @Test
+    void classChangeWideningTapersAfterTheNode() {
+        RoadNetwork net = RoadNetwork.empty("x").addNode(0.5, 64, 0.5).addNode(100.5, 64, 0.5).addNode(200.5, 64, 0.5)
+                .addLink(1, 2, "street").addLink(2, 3, "highway");
+        RoadChain c = RoadGeometry.chains(net).get(0);
+        double streetHalf = RoadClass.street().halfTotal(), hwHalf = RoadClass.highway().halfTotal(); // 10.5 and 18.5
+        double taper = TaperProfile.taperLength(2 * streetHalf, 2 * hwHalf); // 160 -> clamped to 45 (0.45 * 100)
+        assertTrue(taper > 45);
+        assertEquals(streetHalf, c.halfAt(99), 1e-9);
+        assertEquals(hwHalf, c.halfAt(146), 1e-9, "taper clamped to 45% of the wider link");
+        assertTrue(c.halfAt(122) > streetHalf + 2 && c.halfAt(122) < hwHalf - 2);
+        // The second lane opens as a wedge; its lane line is absent while the lane is under half open and
+        // present once it is at least half open. The street's sidewalk runs at full width to the taper's end.
+        LaneKind[] k = LaneProfile.KINDS;
+        int outerLane = LaneProfile.CENTRE_INDEX + 3, laneLine = LaneProfile.CENTRE_INDEX + 2;
+        assertEquals(LaneKind.LANE, k[outerLane]);
+        assertEquals(LaneKind.LANE_LINE, k[laneLine]);
+        double[] early = c.widthsAt(104), late = c.widthsAt(140);
+        assertTrue(early[outerLane] < 4 && early[laneLine] == 0, "no lane line while the lane is a sliver");
+        assertTrue(late[outerLane] > 4 && late[laneLine] == 1, "lane line once the lane is half open");
+        // Widening street -> highway: the street's pavement ends square at the node; the taper beyond it has
+        // no sidewalk, no verge, and its outer edge eases smoothly up to the highway's.
+        for (double sAlong = 100.5; sAlong <= 146; sAlong += 1) {
+            double[] ws = c.widthsAt(sAlong);
+            assertEquals(0, ws[0], 1e-9, "no sidewalk past the node at " + sAlong);
+            assertEquals(0, ws[1], 1e-9, "no curb past the node at " + sAlong);
+            double cw = 0.5 + 1 + (6 + 2 * ease((sAlong - 100) / 45)) + ws[LaneProfile.CENTRE_INDEX + 2] + ws[LaneProfile.CENTRE_INDEX + 3];
+            assertEquals(cw + ws[LaneProfile.KINDS.length - 3], c.halfAt(sAlong), 1e-6, "outer edge = carriageway + eased shoulder at " + sAlong);
+        }
+        assertEquals(3, c.widthsAt(99.5)[0], 1e-9, "sidewalk right up to the node");
+        assertEquals(0, c.widthsAt(146)[0], 1e-6, "pavement gone where the highway begins");
+        for (double sAlong = 100; sAlong <= 146; sAlong += 2) assertTrue(c.halfAt(sAlong) <= hwHalf + 1e-6, "never wider than the highway at " + sAlong);
+        // The shoulder setting is respected through the taper: it eases from 0 (street) up to the highway's 2.
+        assertEquals(0, c.widthsAt(101)[LaneProfile.KINDS.length - 3], 0.05);
+        assertEquals(1, c.widthsAt(100 + 22.5)[LaneProfile.KINDS.length - 3], 0.05, "shoulder half way at mid-taper");
+        assertEquals(2, c.widthsAt(146)[LaneProfile.KINDS.length - 3], 1e-9);
+        assertEquals(1, c.widthsAt(104)[3], 1e-6, "edge line present through the taper");
+    }
+
+    private static double ease(double f) { f = Math.max(0, Math.min(1, f)); return f * f * (3 - 2 * f); }
+
+    private static RoadNetwork highwayWithRamp(double rampX, double rampZ, NodeKind kind) {
+        RoadNetwork net = RoadNetwork.empty("x").addNode(0.5, 64, 0.5).addNode(-150.5, 64, 0.5).addNode(150.5, 64, 0.5)
+                .addNode(rampX, 64, rampZ)
+                .addLink(1, 2, "highway").addLink(1, 3, "highway").addLink(1, 4, "street");
+        return net.putNode(net.nodes().get(1).withKind(kind));
+    }
+
+    /** A street joining a highway at a shallow angle from behind, on the right of eastbound traffic, is an entry. */
+    @Test
+    void shallowRampIsDetectedAsEntryOrExit() {
+        RoadNetwork net = highwayWithRamp(-80.5, 40.5, NodeKind.AUTO);
+        Merge m = Merge.at(net, net.nodes().get(1));
+        assertNotNull(m);
+        assertTrue(m.entry());
+        assertEquals(1, m.d().x(), 1e-9);
+        assertEquals(3, m.forward().other(1));
+        assertFalse(RoadGeometry.isJunction(net, net.nodes().get(1)), "a merge is not painted as a junction");
+        // Same ramp pointing forward along the traffic: an exit.
+        RoadNetwork exit = highwayWithRamp(80.5, 40.5, NodeKind.AUTO);
+        assertFalse(Merge.at(exit, exit.nodes().get(1)).entry());
+        // Too steep an angle: a plain junction. Forced kind: still a merge.
+        assertNull(Merge.at(highwayWithRamp(-20.5, 60.5, NodeKind.AUTO), highwayWithRamp(-20.5, 60.5, NodeKind.AUTO).nodes().get(1)));
+        assertNotNull(Merge.at(highwayWithRamp(-20.5, 60.5, NodeKind.ENTRY), highwayWithRamp(-20.5, 60.5, NodeKind.ENTRY).nodes().get(1)));
+        assertNull(Merge.at(highwayWithRamp(-80.5, 40.5, NodeKind.JUNCTION), highwayWithRamp(-80.5, 40.5, NodeKind.JUNCTION).nodes().get(1)));
+    }
+
+    /** The highway runs through the merge as one chain with an acceleration lane on the right after the node. */
+    @Test
+    void entryRampGetsAccelerationLane() {
+        RoadNetwork net = highwayWithRamp(-80.5, 40.5, NodeKind.AUTO);
+        List<RoadChain> chains = RoadGeometry.chains(net);
+        assertEquals(2, chains.size(), "highway chain plus ramp chain");
+        RoadChain hw = chains.get(0).linkIds().contains(3) ? chains.get(1) : chains.get(0);
+        assertEquals(3, hw.nodeIds().size(), "highway is one chain through the merge");
+        double sNode = hw.nodeAlong()[1];
+        boolean forward = net.nodes().get(hw.nodeIds().get(2)).x() > net.nodes().get(hw.nodeIds().get(1)).x();
+        int aux = forward ? LaneProfile.KINDS.length - 5 : 4, auxLine = forward ? LaneProfile.KINDS.length - 6 : 5;
+        double dir = forward ? 1 : -1;
+        RoadClass hwClass = RoadClass.highway();
+        assertEquals(0, hw.widthsAt(sNode - 5 * dir)[aux], 1e-9, "no lane before the entry");
+        assertEquals(hwClass.laneWidth(), hw.widthsAt(sNode + 30 * dir)[aux], 1e-9, "full lane after the entry");
+        assertEquals(1, hw.widthsAt(sNode + 30 * dir)[auxLine], 1e-9, "aux lane line");
+        assertTrue(hw.widthsAt(sNode + (hwClass.mergeLength() + 10) * dir)[aux] < hwClass.laneWidth() * 0.6, "tapering out");
+        assertEquals(0, hw.widthsAt(sNode + (hwClass.mergeLength() + Merge.LANE_TAPER + 1) * dir)[aux], 1e-9, "gone");
+        // The ramp chain ends on the nose: abreast of the node, on the aux lane's centre line.
+        RoadChain ramp = chains.get(0) == hw ? chains.get(1) : chains.get(0);
+        com.aleksalfi.curvegen.geom.Polyline rl = ramp.line();
+        boolean endsAtNode = ramp.nodeIds().get(ramp.nodeIds().size() - 1) == 1;
+        double ex = endsAtNode ? rl.x[rl.size - 1] : rl.x[0], ez = endsAtNode ? rl.z[rl.size - 1] : rl.z[0];
+        Merge m = Merge.at(net, net.nodes().get(1));
+        assertEquals(m.nose().x(), ex, 0.6);
+        assertEquals(m.nose().z(), ez, 0.6);
+        // The centre line does not move when the lane is added: it is still at z = 0 on both sides of the node.
+        CellMap probe = RoadPainter.paint(net, chains);
+        assertEquals(Surface.LINE, at(probe, -40, 0), "centre line before the merge");
+        assertEquals(Surface.LINE, at(probe, 30, 0), "centre line within the acceleration lane");
+        assertEquals(Surface.LINE, at(probe, 30, 1 + 8), "lane line at its usual place within the acceleration lane");
+        // Painted: a full extra lane of asphalt on the south side 30 blocks east of the node, and a hatched gore behind it.
+        CellMap cells = RoadPainter.paint(net, chains);
+        int auxZ = (int) Math.floor(0.5 + m.auxCentre());
+        Surface sAux = at(cells, 30, auxZ);
+        assertTrue(sAux == Surface.ASPHALT || sAux == Surface.LINE, "acceleration lane paved at z=" + auxZ + ": " + sAux);
+        int lines = 0, paved = 0;
+        for (int x = -30; x <= -5; x++) for (int z = (int) hwClass.halfCarriageway() + 3; z < auxZ + 6; z++) {
+            Surface sf = at(cells, x, z);
+            if (sf == Surface.LINE) lines++;
+            if (sf == Surface.ASPHALT || sf == Surface.LINE) paved++;
+        }
+        assertTrue(lines > 5 && paved > 40, "gore should be paved and hatched, lines=" + lines + " paved=" + paved);
+    }
+
+    /** An entry followed by an exit within twice the merge length share one continuous weaving lane. */
+    @Test
+    void closeEntryAndExitFormWeavingLane() {
+        RoadNetwork net = RoadNetwork.empty("x").addNode(0.5, 64, 0.5).addNode(100.5, 64, 0.5)
+                .addNode(-150.5, 64, 0.5).addNode(250.5, 64, 0.5)
+                .addNode(-80.5, 64, 40.5).addNode(180.5, 64, 40.5)
+                .addLink(3, 1, "highway").addLink(1, 2, "highway").addLink(2, 4, "highway")
+                .addLink(1, 5, "street").addLink(2, 6, "street");
+        RoadChain hw = null;
+        for (RoadChain c : RoadGeometry.chains(net)) if (c.nodeIds().contains(3) && c.nodeIds().contains(4)) hw = c;
+        assertNotNull(hw, "one highway chain through both merges");
+        assertEquals(1, hw.profile().auxLanes().size(), "entry and exit lanes joined into one");
+        double s1 = hw.nodeAlong()[1], s2 = hw.nodeAlong()[2];
+        for (double s = s1; s <= s2; s += 5) assertEquals(8, hw.widthsAt(s)[LaneProfile.KINDS.length - 5], 1e-9, "weaving lane continuous at " + s);
+    }
+
+    /** One-way cross-sections: all lanes one way, lane lines between, no centre line; width = lanes only. */
+    @Test
+    void oneWayProfiles() {
+        RoadClass street = RoadClass.street();   // 1 lane: the centre slot is the lane
+        double[] w1 = LaneProfile.widthsOf(street, true);
+        assertEquals(6, w1[LaneProfile.CENTRE_INDEX], 1e-9);
+        assertEquals(2 * street.oneWayHalf() + 2 * (1 + 3), 2 * com.aleksalfi.curvegen.geom.Rasterizer.half(w1), 1e-9);
+        RoadClass hw = RoadClass.highway();      // 2 lanes: a lane line in the centre slot, a lane each side
+        double[] w2 = LaneProfile.widthsOf(hw, true);
+        assertEquals(1, w2[LaneProfile.CENTRE_INDEX], 1e-9);
+        assertEquals(8, w2[LaneProfile.CENTRE_INDEX - 1], 1e-9);
+        assertEquals(8, w2[LaneProfile.CENTRE_INDEX + 1], 1e-9);
+        assertEquals(0, w2[LaneProfile.CENTRE_INDEX - 2], 1e-9, "no second lane line");
+        RoadClass three = hw.withLanesPerDirection(3); // 3 lanes: centre lane plus one each side with lines
+        double[] w3 = LaneProfile.widthsOf(three, true);
+        assertEquals(8, w3[LaneProfile.CENTRE_INDEX], 1e-9);
+        assertEquals(0, w3[LaneProfile.CENTRE_INDEX - 1], 1e-9);
+        assertEquals(1, w3[LaneProfile.CENTRE_INDEX - 2], 1e-9, "line beside the centre lane");
+        assertEquals(8, w3[LaneProfile.CENTRE_INDEX - 3], 1e-9);
+        assertEquals(3 * 8 + 2, 2 * three.oneWayHalf(), 1e-9);
+    }
+
+    /** A one-way chain runs with the traffic regardless of which end was drawn first, and stops where the direction turns. */
+    @Test
+    void oneWayChainsFollowTraffic() {
+        RoadNetwork net = RoadNetwork.empty("x").addNode(0.5, 64, 0.5).addNode(50.5, 64, 0.5).addNode(100.5, 64, 0.5).addNode(150.5, 64, 0.5)
+                .addLink(2, 1, "street").addLink(2, 3, "street").addLink(4, 3, "street");
+        // 1<-2 reversed so traffic runs 1 -> 2 -> 3, then 4 -> 3 arrives against it.
+        net = net.putLink(net.links().get(1).withDir(LinkDir.REVERSE)).putLink(net.links().get(2).withDir(LinkDir.FORWARD)).putLink(net.links().get(3).withDir(LinkDir.FORWARD));
+        List<RoadChain> chains = RoadGeometry.chains(net);
+        assertEquals(2, chains.size(), "the opposing link cannot join the chain");
+        RoadChain a = chains.get(0).nodeIds().contains(1) ? chains.get(0) : chains.get(1);
+        assertEquals(List.of(1, 2, 3), a.nodeIds(), "chain ordered with the traffic");
+        assertTrue(a.oneWay());
+        CellMap cells = RoadPainter.paint(net, chains);
+        assertEquals(Surface.ASPHALT, at(cells, 25, 0), "no centre line on a one-way street");
+        assertEquals(Surface.CURB, at(cells, 25, 4), "curb right beside the single lane");
+        assertEquals(Surface.SIDEWALK, at(cells, 25, 6));
+        assertEquals(Surface.SIDEWALK, at(cells, 25, -6));
+    }
+
+    /** A two-way street splitting into two one-way streets: offsets, solid approach, gore. */
+    @Test
+    void splitIntoOneWayRoads() {
+        RoadNetwork net = RoadNetwork.empty("x").addNode(-100.5, 64, 0.5).addNode(0.5, 64, 0.5)
+                .addNode(100.5, 64, 30.5).addNode(100.5, 64, -30.5)
+                .addLink(1, 2, "street").addLink(2, 3, "street").addLink(4, 2, "street");
+        net = net.putLink(net.links().get(2).withDir(LinkDir.FORWARD)).putLink(net.links().get(3).withDir(LinkDir.FORWARD));
+        Split sp = Split.at(net, net.nodes().get(2));
+        assertNotNull(sp);
+        assertEquals(1, sp.d().x(), 1e-9);
+        assertEquals(3.5, sp.offset(), 1e-9, "half a lane plus half the centre line");
+        assertEquals(4.0, sp.outStart().z(), 1e-9, "leaving road starts on the right (south) of the centre");
+        assertEquals(-3.0, sp.inEnd().z(), 1e-9);
+        assertFalse(RoadGeometry.isJunction(net, net.nodes().get(2)));
+        List<RoadChain> chains = RoadGeometry.chains(net);
+        assertEquals(3, chains.size());
+        for (RoadChain c : chains) {
+            if (c.linkIds().contains(2)) { assertEquals(2, c.nodeIds().get(0)); assertEquals(sp.outStart().z(), c.line().z[0], 0.6); }
+            if (c.linkIds().contains(3)) { assertEquals(2, c.nodeIds().get(c.nodeIds().size() - 1)); assertEquals(sp.inEnd().z(), c.line().z[c.line().size - 1], 0.6); }
+        }
+        CellMap cells = RoadPainter.paint(net, chains);
+        for (int x = -20; x < 0; x += 4) assertEquals(Surface.LINE, at(cells, x, 0), "solid centre on the approach at x=" + x);
+        // Just past the node the two lanes continue straight: asphalt at the lane centres, a border line between.
+        assertEquals(Surface.ASPHALT, at(cells, 6, 4));
+        assertEquals(Surface.ASPHALT, at(cells, 6, -4));
+        int lines = 0;
+        for (int x = 15; x < 45; x++) for (int z = -6; z <= 6; z++) if (at(cells, x, z) == Surface.LINE) lines++;
+        assertTrue(lines > 12, "hatched gore between the diverging roads, lines=" + lines);
+        // Far away the roads are separate and the ground between is empty.
+        assertEquals(Surface.NONE, at(cells, 90, 0));
+    }
+
+    /** A one-way street ramp onto a highway is an entry when it arrives at the node and fits the acceleration lane. */
+    @Test
+    void oneWayRampMerges() {
+        RoadNetwork net = RoadNetwork.empty("x").addNode(0.5, 64, 0.5).addNode(-150.5, 64, 0.5).addNode(150.5, 64, 0.5)
+                .addNode(-80.5, 64, 40.5)
+                .addLink(1, 2, "highway").addLink(1, 3, "highway").addLink(4, 1, "street");
+        net = net.putLink(net.links().get(3).withDir(LinkDir.FORWARD));
+        Merge m = Merge.at(net, net.nodes().get(1));
+        assertNotNull(m);
+        assertTrue(m.entry());
+        assertEquals(3, m.rampHalf(), 1e-9);
+        // Reversed ramp direction (leaving the node) would be an exit, but it points backwards: still a merge, forced by direction.
+        RoadNetwork rev = net.putLink(net.links().get(3).withDir(LinkDir.REVERSE));
+        assertFalse(Merge.at(rev, rev.nodes().get(1)).entry());
+        List<RoadChain> chains = RoadGeometry.chains(net);
+        RoadChain ramp = null;
+        for (RoadChain c : chains) if (c.linkIds().contains(3)) ramp = c;
+        assertNotNull(ramp);
+        assertTrue(ramp.oneWay());
+        assertEquals(1, ramp.nodeIds().get(ramp.nodeIds().size() - 1), "ramp chain runs towards the highway");
+        CellMap cells = RoadPainter.paint(net, chains);
+        int auxZ = (int) Math.floor(0.5 + m.auxCentre());
+        Surface sAux = at(cells, 30, auxZ);
+        assertTrue(sAux == Surface.ASPHALT || sAux == Surface.LINE);
     }
 }

@@ -126,7 +126,7 @@ public final class RoadAim {
         chainBounds = new double[chains.size()][];
         for (int i = 0; i < chains.size(); i++) {
             Polyline l = chains.get(i).line();
-            double pad = Math.max(NODE_PICK_RADIUS, chains.get(i).roadClass().halfTotal());
+            double pad = Math.max(NODE_PICK_RADIUS, chains.get(i).maxHalf());
             chainBounds[i] = new double[]{l.minX() - pad, l.maxX() + pad, l.minZ() - pad, l.maxZ() + pad, pad};
         }
         Map<Integer, Double> radii = new HashMap<>();

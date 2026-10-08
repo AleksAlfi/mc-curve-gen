@@ -9,8 +9,8 @@ import java.util.List;
 /** Geometry of a junction node: its arms sorted by angle, the corner fillets and the painted box. */
 public final class Junction {
     public record Arm(RoadLink link, RoadClass cls, Vec2 u, ArmSettings settings) {
-        double halfCarriageway() { return cls.halfCarriageway(); }
-        double halfTotal() { return cls.halfTotal(); }
+        double halfCarriageway() { return link.oneWay() ? cls.oneWayHalf() : cls.halfCarriageway(); }
+        double halfTotal() { return cls.halfTotal() - cls.halfCarriageway() + halfCarriageway(); }
     }
 
     /** Rounded corner between two adjacent arms: triangle (p, t1, t2) outside the circle (f, r) is asphalt. */
@@ -59,9 +59,10 @@ public final class Junction {
             arms.add(new Arm(link, cls, u.normalize(), node.arm(link.id())));
             dirs.add(u.normalize());
             grades.add((other.y() - node.y()) / u.length());
+            Arm arm = arms.get(arms.size() - 1);
             r = Math.max(r, cls.cornerRadius());
-            maxHalf = Math.max(maxHalf, cls.halfTotal());
-            maxCarriage = Math.max(maxCarriage, cls.halfCarriageway());
+            maxHalf = Math.max(maxHalf, arm.halfTotal());
+            maxCarriage = Math.max(maxCarriage, arm.halfCarriageway());
             maxLane = Math.max(maxLane, cls.laneWidth());
         }
         arms.sort(Comparator.comparingDouble(a -> a.u().angle()));

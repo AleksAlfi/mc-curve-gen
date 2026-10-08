@@ -1,5 +1,6 @@
 package com.aleksalfi.curvegen.road;
 
+import com.aleksalfi.curvegen.geom.Polyline;
 import com.aleksalfi.curvegen.geom.Rasterizer;
 import com.aleksalfi.curvegen.geom.Vec2;
 
@@ -63,6 +64,11 @@ public final class RoadPainter {
         for (RoadNode node : net.nodes().values()) {
             if (node.kind() == NodeKind.ROUNDABOUT) paintRoundabout(net, node, chains, cells);
             else if (RoadGeometry.isJunction(net, node)) paintJunction(net, node, chains, cells);
+            else {
+                Merge m = Merge.at(net, node);
+                if (m != null) paintMerge(m, chains, cells);
+                else { Split sp = Split.at(net, node); if (sp != null) paintSplit(sp, chains, cells); }
+            }
         }
         return cells;
     }
@@ -75,29 +81,31 @@ public final class RoadPainter {
     static double zebraWidth(RoadClass c) { return Math.max(3, Math.round(c.laneWidth() / 2.0)); }
 
     private static void paintChain(RoadChain chain, CellMap cells) {
-        RoadClass cls = chain.roadClass();
-        LaneProfile profile = LaneProfile.of(cls);
-        List<Rasterizer.Column> columns = Rasterizer.rasterize(chain.line(), profile.widths(), SUPERSAMPLE, MAX_COLUMNS);
+        List<Rasterizer.Column> columns = Rasterizer.rasterize(chain.line(), chain.profile(), SUPERSAMPLE, MAX_COLUMNS);
         double total = chain.length();
-        int dash = centreDash(cls), gap = 2 * dash, ldash = laneDash(cls), lgap = 2 * ldash;
-        double zw = zebraWidth(cls);
         for (Rasterizer.Column c : columns) {
-            if (c.lane() < 0 || c.lane() >= profile.kinds().length) continue;
-            LaneKind kind = profile.kinds()[c.lane()];
+            if (c.lane() < 0 || c.lane() >= LaneProfile.KINDS.length) continue;
+            LaneKind kind = LaneProfile.KINDS[c.lane()];
             double s = c.along();
+            RoadClass cls = chain.classAt(s);
+            int dash = centreDash(cls), gap = 2 * dash, ldash = laneDash(cls), lgap = 2 * ldash;
             Surface surface = switch (kind) {
                 case SIDEWALK -> Surface.SIDEWALK;
                 case CURB -> Surface.CURB;
+                case SHOULDER, AUX, LANE -> Surface.ASPHALT;
                 case EDGE -> Surface.LINE;
-                case LANE -> Surface.ASPHALT;
+                case AUX_LINE -> (s % (3 * ldash)) < 2 * ldash ? Surface.LINE : Surface.ASPHALT; // long dashes, short gaps
                 case LANE_LINE -> (s % (ldash + lgap)) < ldash ? Surface.LINE : Surface.ASPHALT;
-                case CENTRE -> centreSolid(chain, s, total) || (s % (dash + gap)) < dash ? Surface.LINE : Surface.ASPHALT;
+                case CENTRE -> chain.oneWay()
+                        ? (chain.widthsAt(s)[LaneProfile.CENTRE_INDEX] > 1.5 ? Surface.ASPHALT : (s % (ldash + lgap)) < ldash ? Surface.LINE : Surface.ASPHALT)
+                        : centreSolid(chain, s, total) || (s % (dash + gap)) < dash ? Surface.LINE : Surface.ASPHALT;
             };
             // Zebra crossing on a plain node: stripes across the carriageway.
             if (kind != LaneKind.SIDEWALK && kind != LaneKind.CURB) {
+                double zw = zebraWidth(cls);
                 for (double z : chain.zebras()) {
                     if (Math.abs(s - z) <= zw / 2) {
-                        surface = (Math.floorMod((int) Math.floor(c.lateral() + cls.halfTotal()), 2) == 0) ? Surface.LINE : Surface.ASPHALT;
+                        surface = (Math.floorMod((int) Math.floor(c.lateral() + chain.halfAt(s)), 2) == 0) ? Surface.LINE : Surface.ASPHALT;
                     }
                 }
             }
@@ -106,7 +114,50 @@ public final class RoadPainter {
             Cell cell = new Cell(surface, cls, height, c.coverage(), c.outwardX(), c.outwardZ(), chain.id(), Math.abs(c.lateral()), c.along());
             if (beats(cell, cells.at(k, cell.height))) cells.put(k, cell);
         }
-        for (RoadChain.Corner corner : chain.corners()) mitreInnerCorner(chain, profile, corner, cells);
+        for (RoadChain.Corner corner : chain.corners()) mitreInnerCorner(chain, corner, cells);
+        if (chain.oneWay()) paintArrows(chain, cells);
+    }
+
+    /** Direction arrows in every lane of a one-way road, every {@link #ARROW_SPACING} blocks, where the class asks for them. */
+    public static final double ARROW_SPACING = 24;
+
+    private static void paintArrows(RoadChain chain, CellMap cells) {
+        Polyline line = chain.line();
+        for (double s = 8; s + 6 < chain.length(); s += ARROW_SPACING) {
+            RoadClass cls = chain.classAt(s);
+            if (!cls.paintArrows()) continue;
+            double[] w = chain.widthsAt(s);
+            double left = Rasterizer.leftHalf(w, LaneProfile.CENTRE_INDEX);
+            double edge = left;
+            for (int i = 0; i < w.length; i++) {
+                double lo = edge - w[i];
+                boolean lane = w[i] >= 3 && (LaneProfile.KINDS[i] == LaneKind.LANE || LaneProfile.KINDS[i] == LaneKind.AUX || (LaneProfile.KINDS[i] == LaneKind.CENTRE && w[i] > 1.5));
+                if (lane) arrow(chain, line, s, (edge + lo) / 2, cells);
+                edge = lo;
+            }
+        }
+    }
+
+    /** An arrow pointing along the chain: a 1-wide stem of 6 blocks, then head rows 5, 3 and 1 wide (3 and 1 in narrow lanes). */
+    private static void arrow(RoadChain chain, Polyline line, double s, double lateral, CellMap cells) {
+        double[] w0 = chain.widthsAt(s);
+        boolean wide = true;
+        {   // the lane this arrow sits in must be at least 6 wide for the 5-wide head row
+            double left = Rasterizer.leftHalf(w0, LaneProfile.CENTRE_INDEX), edge = left;
+            for (int i = 0; i < w0.length; i++) { double lo = edge - w0[i]; if (lateral <= edge && lateral > lo) { wide = w0[i] >= 6; break; } edge = lo; }
+        }
+        int[] halves = wide ? new int[]{0, 0, 0, 0, 0, 0, 2, 1, 0} : new int[]{0, 0, 0, 0, 0, 1, 0};
+        for (int k = 0; k < halves.length; k++) {
+            double[] pt = RoadGeometry.pointAt(line, s + k);
+            int half = halves[k];
+            for (int o = -half; o <= half; o++) {
+                double lat = lateral + o;
+                double x = pt[0] + pt[3] * lat, z = pt[1] - pt[2] * lat; // left = (tz, -tx)
+                long key = key((int) Math.floor(x), (int) Math.floor(z));
+                Cell c = cells.at(key, pt[4]);
+                if (c != null && c.chainId == chain.id() && c.surface == Surface.ASPHALT) c.surface = Surface.LINE;
+            }
+        }
     }
 
     /**
@@ -115,9 +166,11 @@ public final class RoadPainter {
      * repainted as the plain intersection of the two straight legs (a mitre), which is how a tight curb
      * corner looks in reality.
      */
-    private static void mitreInnerCorner(RoadChain chain, LaneProfile profile, RoadChain.Corner corner, CellMap cells) {
-        RoadClass cls = chain.roadClass();
-        double half = cls.halfTotal();
+    private static void mitreInnerCorner(RoadChain chain, RoadChain.Corner corner, CellMap cells) {
+        double sCorner = RoadGeometry.alongOf(chain.line(), corner.node());
+        RoadClass cls = chain.classAt(sCorner);
+        double[] widths = chain.widthsAt(sCorner);
+        double half = Rasterizer.half(widths);
         double r = corner.radius();
         if (r >= half + 0.5) return;
         Vec2 p = corner.node();
@@ -159,7 +212,7 @@ public final class RoadPainter {
                 if (lateral < r - 0.5) continue; // the arc still rasterizes this part cleanly
                 long k = key(x, z);
                 Cell existing = cells.at(k, y);
-                LaneKind kind = profile.kindAt(lateral);
+                LaneKind kind = LaneProfile.kindAt(widths, lateral);
                 if (kind == null) {
                     if (existing != null && existing.chainId == chain.id()) cells.remove(k, existing);
                     continue;
@@ -180,12 +233,137 @@ public final class RoadPainter {
 
     /** Solid centre line: multi-lane roads, tight bends, and the approach to a junction or roundabout. */
     private static boolean centreSolid(RoadChain chain, double s, double total) {
-        RoadClass cls = chain.roadClass();
+        RoadClass cls = chain.classAt(s);
         if (cls.lanesPerDirection() >= 2) return true;
         for (double[] r : chain.solidRanges()) if (s >= r[0] && s <= r[1]) return true;
         double app = approach(cls);
         if (chain.startBox() > 0 && s < chain.startBox() + app) return true;
         return chain.endBox() > 0 && total - s < chain.endBox() + app;
+    }
+
+    // ---- ramp merges -----------------------------------------------------------------------------------
+
+    /**
+     * The gore of a ramp merge: the wedge between the through road's edge line and the ramp's inner edge,
+     * behind the nose of an entry or ahead of the nose of an exit. It is paved and hatched with diagonal
+     * stripes, bordered by a solid line on the ramp side (the through road's edge line is already there).
+     */
+    private static void paintMerge(Merge m, List<RoadChain> chains, CellMap cells) {
+        RoadChain ramp = null, hw = null;
+        for (RoadChain c : chains) {
+            if (c.linkIds().contains(m.ramp().id())) ramp = c;
+            if (c.linkIds().contains(m.forward().id())) hw = c;
+        }
+        if (ramp == null || hw == null) return;
+        Vec2 centre = m.node().xz(), d = m.d(), right = m.right();
+        double hc = m.throughHalf(), rhc = m.rampHalf();
+        double sign = m.entry() ? -1 : 1;
+        int reach = 120;
+        double[] rampT = new double[reach + 1];
+        java.util.Arrays.fill(rampT, Double.NaN);
+        Polyline rl = ramp.line();
+        for (int i = 0; i < rl.size; i++) {
+            Vec2 rel = new Vec2(rl.x[i], rl.z[i]).sub(centre);
+            double s = rel.dot(d) * sign, t = rel.dot(right);
+            int idx = (int) Math.round(s);
+            if (idx >= 0 && idx <= reach && (Double.isNaN(rampT[idx]) || t < rampT[idx])) rampT[idx] = t;
+        }
+        // The wedge is hatched only while the ramp is still close: once its inner edge is three quarters of a
+        // lane beyond the highway's shoulder the roads have visibly separated and the ground between is grass.
+        double farEnough = hc + 1 + m.highway().shoulderWidth() + 0.75 * m.highway().laneWidth();
+        java.util.Set<Long> done = new java.util.HashSet<>();
+        RoadClass cls = m.highway();
+        for (int idx = 0; idx <= reach; idx++) {
+            if (Double.isNaN(rampT[idx])) { if (idx > 0) break; else continue; }
+            double inner = rampT[idx] - rhc;
+            if (inner > farEnough) break;
+            for (double s = idx - 0.5; s < idx + 0.5; s += 0.5) {
+                for (double t = hc + 1; t < inner; t += 0.5) {
+                    Vec2 q = centre.add(d.scale(s * sign)).add(right.scale(t));
+                    int x = (int) Math.floor(q.x()), z = (int) Math.floor(q.z());
+                    long k = key(x, z);
+                    if (!done.add(k)) continue;
+                    double y = RoadGeometry.heightAt(hw.line(), q);
+                    Cell existing = cells.at(k, y);
+                    if (existing != null && existing.carriageway() && existing.chainId != ramp.id() && existing.chainId != hw.id()) continue;
+                    boolean border = t >= inner - 1;
+                    boolean stripe = Math.floorMod((int) Math.floor(s - 2 * t), 6) < 2; // diagonal bars, 2-block runs
+                    Surface surface = border || stripe ? Surface.LINE : Surface.ASPHALT;
+                    cells.put(k, new Cell(surface, cls, y, 1, 0, 0, -1));
+                }
+            }
+        }
+    }
+
+    /**
+     * The gore of a split: the hatched wedge between the two one-way roads ahead of the node, bordered by
+     * solid lines, from where the two-way centre line ends until the roads have separated by most of a lane.
+     */
+    private static void paintSplit(Split sp, List<RoadChain> chains, CellMap cells) {
+        RoadChain outChain = null, inChain = null;
+        for (RoadChain c : chains) {
+            if (c.linkIds().contains(sp.out().id())) outChain = c;
+            if (c.linkIds().contains(sp.in().id())) inChain = c;
+        }
+        if (outChain == null || inChain == null) return;
+        Vec2 centre = sp.node().xz(), d = sp.d(), right = sp.right();
+        int reach = 120;
+        double[] innerOut = edgeByS(outChain, centre, d, right, reach, sp.outSide() > 0);
+        double[] innerIn = edgeByS(inChain, centre, d, right, reach, sp.outSide() < 0);
+        double farEnough = 0.75 * sp.cls().laneWidth();
+        java.util.Set<Long> done = new java.util.HashSet<>();
+        for (int idx = 0; idx <= reach; idx++) {
+            if (Double.isNaN(innerOut[idx]) || Double.isNaN(innerIn[idx])) { if (idx > 0) break; else continue; }
+            double lo = Math.min(innerIn[idx], innerOut[idx]), hi = Math.max(innerIn[idx], innerOut[idx]);
+            if (hi - lo > farEnough + 2) break;
+            if (hi - lo < 0.5) continue;
+            for (double s = idx - 0.5; s < idx + 0.5; s += 0.5) {
+                for (double t = lo; t < hi; t += 0.5) {
+                    Vec2 q = centre.add(d.scale(s)).add(right.scale(t));
+                    int x = (int) Math.floor(q.x()), z = (int) Math.floor(q.z());
+                    long k = key(x, z);
+                    if (!done.add(k)) continue;
+                    double y = RoadGeometry.heightAt(outChain.line(), q);
+                    Cell existing = cells.at(k, y);
+                    if (existing != null && existing.carriageway() && existing.chainId != outChain.id() && existing.chainId != inChain.id()) continue;
+                    boolean border = t <= lo + 1 || t >= hi - 1;
+                    boolean stripe = Math.floorMod((int) Math.floor(s - 2 * t), 6) < 2;
+                    cells.put(k, new Cell(border || stripe ? Surface.LINE : Surface.ASPHALT, sp.cls(), y, 1, 0, 0, -1));
+                }
+            }
+        }
+    }
+
+    /**
+     * Inner carriageway edge of a one-way chain leaving (or arriving at) a split, per block of distance
+     * ahead of the node along {@code d}, as a lateral offset along {@code right}. NaN where the chain
+     * has no sample.
+     */
+    private static double[] edgeByS(RoadChain chain, Vec2 centre, Vec2 d, Vec2 right, int reach, boolean rightSide) {
+        double[] out = new double[reach + 1];
+        java.util.Arrays.fill(out, Double.NaN);
+        Polyline l = chain.line();
+        for (int i = 0; i + 1 < l.size; i++) {
+            Vec2 rel = new Vec2(l.x[i], l.z[i]).sub(centre);
+            double s = rel.dot(d), t = rel.dot(right);
+            int idx = (int) Math.round(s);
+            if (idx < 0 || idx > reach) continue;
+            // Which of the chain's sides faces the split centre depends on the side it lies on and its direction of travel.
+            boolean travelsAlongD = (l.x[i + 1] - l.x[i]) * d.x() + (l.z[i + 1] - l.z[i]) * d.z() > 0;
+            boolean leftFacesCentre = rightSide == travelsAlongD;
+            double[] w = chain.widthsAt(l.s[i]);
+            double edge = rightSide ? t - carriagewayHalf(w, leftFacesCentre) : t + carriagewayHalf(w, leftFacesCentre);
+            if (Double.isNaN(out[idx]) || (rightSide ? edge < out[idx] : edge > out[idx])) out[idx] = edge;
+        }
+        return out;
+    }
+
+    /** Carriageway half width (lanes and lines, no shoulder, edge line, curb or sidewalk) on the left or right of the centre line. */
+    private static double carriagewayHalf(double[] w, boolean leftSide) {
+        int c = LaneProfile.CENTRE_INDEX;
+        double t = w[c] / 2;
+        for (int i = 4; i < c; i++) t += leftSide ? w[i] : w[w.length - 1 - i]; // AUX, AUX_LINE, lanes and lane lines
+        return t;
     }
 
     // ---- junctions -------------------------------------------------------------------------------------
@@ -228,7 +406,8 @@ public final class RoadPainter {
                     double s = rel.dot(arm.u()), d = rel.dot(arm.u().left());
                     if (s >= j.box) {
                         // Plain road zone of the arm: keep the chain's painting, add stop / give-way lines.
-                        if (existing != null && s < j.box + 1 && d > 0.5 && d <= arm.halfCarriageway() && existing.surface != Surface.CURB && existing.surface != Surface.SIDEWALK) {
+                        boolean entryHalf = arm.link().oneWay() ? arm.link().arrives(node.id()) && Math.abs(d) <= arm.halfCarriageway() : d > 0.5 && d <= arm.halfCarriageway();
+                        if (existing != null && s < j.box + 1 && entryHalf && existing.surface != Surface.CURB && existing.surface != Surface.SIDEWALK) {
                             ArmPriority p = arm.settings().priority();
                             if (p == ArmPriority.STOP) existing.surface = Surface.LINE;
                             else if (p == ArmPriority.GIVE_WAY) existing.surface = Math.floorMod((int) Math.floor(d - 0.5), 2) == 0 ? Surface.LINE : Surface.ASPHALT;
@@ -289,7 +468,8 @@ public final class RoadPainter {
                     if (rad >= r.outerRadius) {
                         // Arm mouth: asphalt, with a give-way line across the entry half at the ring.
                         Surface surface = Surface.ASPHALT;
-                        if (rad < r.outerRadius + 1 && d > 0.5 && d <= arm.halfCarriageway()) {
+                        boolean entryHalf = arm.link().oneWay() ? arm.link().arrives(node.id()) && Math.abs(d) <= arm.halfCarriageway() : d > 0.5 && d <= arm.halfCarriageway();
+                        if (rad < r.outerRadius + 1 && entryHalf) {
                             surface = Math.floorMod((int) Math.floor(d - 0.5), 2) == 0 ? Surface.LINE : Surface.ASPHALT;
                         }
                         cells.put(k, new Cell(surface, arm.cls(), y, 1, 0, 0, -1));

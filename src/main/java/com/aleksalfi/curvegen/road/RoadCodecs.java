@@ -43,7 +43,10 @@ public final class RoadCodecs {
             Codec.STRING.optionalFieldOf("asphalt", "minecraft:gray_concrete").forGetter(RoadClass::asphalt),
             Codec.STRING.optionalFieldOf("line", "minecraft:white_concrete").forGetter(RoadClass::line),
             Codec.STRING.optionalFieldOf("curb", "minecraft:stone_bricks").forGetter(RoadClass::curb),
-            Codec.STRING.optionalFieldOf("sidewalk", "minecraft:smooth_stone").forGetter(RoadClass::sidewalk)
+            Codec.STRING.optionalFieldOf("sidewalk", "minecraft:smooth_stone").forGetter(RoadClass::sidewalk),
+            Codec.INT.optionalFieldOf("shoulder", 0).forGetter(RoadClass::shoulderWidth),
+            Codec.INT.optionalFieldOf("merge_length", 60).forGetter(RoadClass::mergeLength),
+            Codec.BOOL.optionalFieldOf("arrows", false).forGetter(RoadClass::paintArrows)
     ).apply(i, RoadClass::new));
 
     private static final Codec<Map<Integer, ArmSettings>> ARMS = Codec.unboundedMap(
@@ -67,7 +70,9 @@ public final class RoadCodecs {
             Codec.INT.fieldOf("id").forGetter(RoadLink::id),
             Codec.INT.fieldOf("a").forGetter(RoadLink::a),
             Codec.INT.fieldOf("b").forGetter(RoadLink::b),
-            Codec.STRING.optionalFieldOf("class", "street").forGetter(RoadLink::classId)
+            Codec.STRING.optionalFieldOf("class", "street").forGetter(RoadLink::classId),
+            Codec.STRING.xmap(v -> { try { return LinkDir.valueOf(v); } catch (IllegalArgumentException e) { return LinkDir.TWO_WAY; } }, LinkDir::name)
+                    .optionalFieldOf("dir", LinkDir.TWO_WAY).forGetter(RoadLink::dir)
     ).apply(i, RoadLink::new));
 
     public static final Codec<RoadNetwork> NETWORK = RecordCodecBuilder.create(i -> i.group(

@@ -29,6 +29,20 @@ public final class RoadPreview {
             RoadNode a = net.nodes().get(l.a()), b = net.nodes().get(l.b());
             if (a == null || b == null) continue;
             segs.add(new Compiled.Segment3(a.x(), a.y() + 0.1, a.z(), b.x(), b.y() + 0.1, b.z(), 1f, 0.4f, 1f));
+            if (l.oneWay()) {
+                // Chevrons along the link showing the direction of travel.
+                RoadNode from = net.nodes().get(l.from()), to = net.nodes().get(l.to());
+                double dx = to.x() - from.x(), dz = to.z() - from.z(), len = Math.hypot(dx, dz);
+                if (len > 4) {
+                    dx /= len; dz /= len;
+                    double lx = dz, lz = -dx;
+                    for (double f = 0.25; f < 1; f += 0.25) {
+                        double px = from.x() + dx * len * f, pz = from.z() + dz * len * f, py = from.y() + (to.y() - from.y()) * f + 0.3;
+                        segs.add(new Compiled.Segment3(px - dx * 2 + lx * 1.5, py, pz - dz * 2 + lz * 1.5, px, py, pz, 1f, 0.8f, 0.2f));
+                        segs.add(new Compiled.Segment3(px - dx * 2 - lx * 1.5, py, pz - dz * 2 - lz * 1.5, px, py, pz, 1f, 0.8f, 0.2f));
+                    }
+                }
+            }
         }
         return new Compiled(r.blocks(), r.centerlines(), markers, segs, r.blocks().warnings());
     }

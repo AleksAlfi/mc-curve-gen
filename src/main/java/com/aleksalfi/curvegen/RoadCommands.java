@@ -4,6 +4,7 @@ import com.aleksalfi.curvegen.item.RoadPlannerItem;
 import com.aleksalfi.curvegen.road.Access;
 import com.aleksalfi.curvegen.road.ArmPriority;
 import com.aleksalfi.curvegen.road.CornerStyle;
+import com.aleksalfi.curvegen.road.LinkDir;
 import com.aleksalfi.curvegen.road.NodeKind;
 import com.aleksalfi.curvegen.road.RoadClass;
 import com.aleksalfi.curvegen.road.RoadEdit;
@@ -37,6 +38,15 @@ public final class RoadCommands {
     private RoadCommands() {}
 
     private interface EnumAction { int run(CommandContext<CommandSourceStack> ctx, Enum<?> value) throws CommandSyntaxException; }
+
+    /** {@code linkdir <link> <twoway|forward|reverse>}: forward is from the road's first node to its second. */
+    private static com.mojang.brigadier.builder.ArgumentBuilder<CommandSourceStack, ?> linkDir(com.mojang.brigadier.builder.ArgumentBuilder<CommandSourceStack, ?> link) {
+        for (LinkDir d : LinkDir.values()) {
+            String word = d == LinkDir.TWO_WAY ? "twoway" : d.name().toLowerCase(java.util.Locale.ROOT);
+            link.then(Commands.literal(word).executes(ctx -> edit(ctx, RoadEdit.of(RoadEdit.Op.LINK_DIR, IntegerArgumentType.getInteger(ctx, "link"), d.name()))));
+        }
+        return link;
+    }
 
     private static <E extends Enum<E>> LiteralArgumentBuilder<CommandSourceStack> enumCommand(String name, E[] values, EnumAction action) {
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal(name);
@@ -88,6 +98,7 @@ public final class RoadCommands {
                         }))))))
                 .then(Commands.literal("link").then(Commands.argument("a", IntegerArgumentType.integer(0)).then(Commands.argument("b", IntegerArgumentType.integer(0))
                         .executes(ctx -> edit(ctx, RoadEdit.of(RoadEdit.Op.LINK_TOGGLE, IntegerArgumentType.getInteger(ctx, "a"), IntegerArgumentType.getInteger(ctx, "b")))))))
+                .then(Commands.literal("linkdir").then(linkDir(Commands.argument("link", IntegerArgumentType.integer(0)))))
                 .then(Commands.literal("linkclass").then(Commands.argument("link", IntegerArgumentType.integer(0)).then(Commands.argument("class", StringArgumentType.word())
                         .executes(ctx -> edit(ctx, RoadEdit.of(RoadEdit.Op.LINK_CLASS, IntegerArgumentType.getInteger(ctx, "link"), StringArgumentType.getString(ctx, "class")))))))
                 .then(Commands.literal("class")
@@ -104,6 +115,9 @@ public final class RoadCommands {
                                 .then(Commands.literal("curb").then(Commands.argument("n", IntegerArgumentType.integer(0, 7)).executes(ctx -> cls(ctx, c -> c.withCurbLayers(IntegerArgumentType.getInteger(ctx, "n"))))))
                                 .then(Commands.literal("edgelines").then(Commands.argument("on", BoolArgumentType.bool()).executes(ctx -> cls(ctx, c -> c.withEdgeLines(BoolArgumentType.getBool(ctx, "on"))))))
                                 .then(Commands.literal("smoothedges").then(Commands.argument("on", BoolArgumentType.bool()).executes(ctx -> cls(ctx, c -> c.withSmoothEdges(BoolArgumentType.getBool(ctx, "on"))))))
+                                .then(Commands.literal("shoulder").then(Commands.argument("n", IntegerArgumentType.integer(0, 8)).executes(ctx -> cls(ctx, c -> c.withShoulderWidth(IntegerArgumentType.getInteger(ctx, "n"))))))
+                                .then(Commands.literal("mergelength").then(Commands.argument("n", IntegerArgumentType.integer(20, 200)).executes(ctx -> cls(ctx, c -> c.withMergeLength(IntegerArgumentType.getInteger(ctx, "n"))))))
+                                .then(Commands.literal("arrows").then(Commands.argument("on", BoolArgumentType.bool()).executes(ctx -> cls(ctx, c -> c.withPaintArrows(BoolArgumentType.getBool(ctx, "on"))))))
                                 .then(Commands.literal("name").then(Commands.argument("name", StringArgumentType.greedyString()).executes(ctx -> cls(ctx, c -> c.withName(StringArgumentType.getString(ctx, "name"))))))
                                 .then(Commands.literal("asphalt").then(Commands.argument("block", StringArgumentType.greedyString()).executes(ctx -> cls(ctx, c -> c.withAsphalt(StringArgumentType.getString(ctx, "block"))))))
                                 .then(Commands.literal("line").then(Commands.argument("block", StringArgumentType.greedyString()).executes(ctx -> cls(ctx, c -> c.withLine(StringArgumentType.getString(ctx, "block"))))))
@@ -133,7 +147,7 @@ public final class RoadCommands {
 
     private static int edit(CommandContext<CommandSourceStack> ctx, RoadEdit edit) throws CommandSyntaxException {
         ServerPlayer player = player(ctx);
-        return RoadService.apply(player, planner(ctx), edit) ? 1 : 0;
+        return RoadService.apply(player, planner(ctx), edit, true) ? 1 : 0;
     }
 
     private static RoadNetwork network(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {

@@ -21,7 +21,9 @@ public record RoadEdit(Op op, int id, int id2, String text, Optional<RoadNode> n
         /** Move node {@code id} to the position in {@code node}. */
         NODE_MOVE,
         /** Restore the previous version of the network. */
-        UNDO
+        UNDO,
+        /** Set link {@code id}'s direction to {@code text} (a {@link LinkDir} name). */
+        LINK_DIR
     }
 
     public static final Codec<RoadEdit> CODEC = RecordCodecBuilder.create(i -> i.group(
