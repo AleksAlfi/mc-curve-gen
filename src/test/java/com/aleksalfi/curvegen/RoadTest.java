@@ -15,6 +15,7 @@ import com.aleksalfi.curvegen.road.NodeKind;
 import com.aleksalfi.curvegen.road.RoadChain;
 import com.aleksalfi.curvegen.road.RoadClass;
 import com.aleksalfi.curvegen.road.RoadGeometry;
+import com.aleksalfi.curvegen.road.RoadLink;
 import com.aleksalfi.curvegen.road.RoadNetwork;
 import com.aleksalfi.curvegen.road.RoadNode;
 import com.aleksalfi.curvegen.road.RoadPainter;
@@ -829,5 +830,28 @@ class RoadTest {
         assertNotNull(ramp);
         assertEquals(List.of(6, 5, 4), ramp.nodeIds());
         assertEquals(1, ramp.corners().size(), "rounded corner at node 5");
+    }
+
+    /** Drawing on from a node continues that road: class, overrides and one-way direction carry over. */
+    @Test
+    void newLinkContinuesTheRoadAtTheNode() {
+        RoadNetwork net = RoadNetwork.empty("x").addNode(0.5, 64, 0.5).addNode(50.5, 64, 0.5).addNode(100.5, 64, 0.5).addNode(-50.5, 64, 0.5);
+        net = net.addLink(1, 2, "ramp");
+        net = net.putLink(net.links().get(1).withDir(LinkDir.FORWARD).withShoulder(java.util.Optional.of(3)));
+        // Continue forward from node 2: traffic 1 -> 2 -> 3.
+        net = net.addLinkContinuing(2, 3);
+        RoadLink l2 = net.linkBetween(2, 3);
+        assertEquals("ramp", l2.classId());
+        assertEquals(3, l2.shoulder().orElse(-1));
+        assertTrue(l2.leaves(2) && l2.arrives(3), "traffic keeps flowing 2 -> 3");
+        // Extend backwards from node 1: traffic must come from 4 into 1.
+        net = net.addLinkContinuing(1, 4);
+        RoadLink l3 = net.linkBetween(1, 4);
+        assertEquals("ramp", l3.classId());
+        assertTrue(l3.arrives(1) && l3.leaves(4), "traffic flows 4 -> 1 -> 2");
+        // A node without roads uses the default class, two-way.
+        RoadNetwork fresh = RoadNetwork.empty("y").addNode(0, 64, 0).addNode(10, 64, 0).addLinkContinuing(1, 2);
+        assertEquals("street", fresh.linkBetween(1, 2).classId());
+        assertFalse(fresh.linkBetween(1, 2).oneWay());
     }
 }

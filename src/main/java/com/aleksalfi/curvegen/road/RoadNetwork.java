@@ -163,6 +163,24 @@ public record RoadNetwork(String name, Map<String, RoadClass> classes, Map<Integ
         return copyLinks(nodes, l, nextLinkId + 1);
     }
 
+    /**
+     * Adds a link from {@code from} to {@code to} that continues the road at {@code from}: it takes the class,
+     * per-road overrides and direction of the road most recently drawn at that node (a one-way road keeps
+     * its traffic flowing through the node). With no road there, the network's default class is used.
+     */
+    public RoadNetwork addLinkContinuing(int from, int to) {
+        RoadLink ref = null;
+        for (RoadLink l : linksOf(from)) if (ref == null || l.id() > ref.id()) ref = l;
+        if (ref == null) return addLink(from, to, defaultClass);
+        RoadNetwork next = addLink(from, to, ref.classId());
+        if (next == this) return this;
+        RoadLink made = next.links().get(next.nextLinkId() - 1);
+        LinkDir dir = LinkDir.TWO_WAY;
+        if (ref.oneWay()) dir = ref.arrives(from) ? LinkDir.FORWARD : LinkDir.REVERSE; // new link is (from -> to)
+        made = made.withDir(dir).withSidewalk(ref.sidewalk()).withEdgeLines(ref.edgeLines()).withShoulder(ref.shoulder()).withLaneWidth(ref.laneWidth());
+        return next.putLink(made);
+    }
+
     public RoadNetwork removeLink(int id) {
         if (!links.containsKey(id)) return this;
         Map<Integer, RoadLink> l = new LinkedHashMap<>(links);

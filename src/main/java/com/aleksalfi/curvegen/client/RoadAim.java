@@ -217,10 +217,10 @@ public final class RoadAim {
                 hyp = net.addNode(t.x(), t.y(), t.z());
                 if (hyp == net) return List.of();
                 watchNode = hyp.nextId() - 1;
-                hyp = hyp.addLink(sel, watchNode, hyp.defaultClass());
+                hyp = hyp.addLinkContinuing(sel, watchNode);
             }
             case CONNECT -> {
-                hyp = net.addLink(sel, t.id(), net.defaultClass());
+                hyp = net.addLinkContinuing(sel, t.id());
                 watchLink = net.nextLinkId();
             }
             case INSERT -> {
@@ -229,7 +229,7 @@ public final class RoadAim {
                 hyp = net.insertNode(link.id(), t.x(), t.y(), t.z());
                 if (hyp == net) return List.of();
                 watchNode = hyp.nextId() - 1;
-                if (hasSel && !link.touches(sel)) hyp = hyp.addLink(sel, watchNode, hyp.defaultClass());
+                if (hasSel && !link.touches(sel)) hyp = hyp.addLinkContinuing(sel, watchNode);
             }
             case MOVE -> {
                 RoadNode moving = net.nodes().get(movingNode);

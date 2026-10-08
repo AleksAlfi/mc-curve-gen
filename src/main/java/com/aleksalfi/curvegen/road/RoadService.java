@@ -134,7 +134,7 @@ public final class RoadService {
                 if (next == net) { overlay(player, "curvegen.road.node_limit"); return false; }
                 int newId = next.nextId() - 1;
                 if (state.selectedNode() >= 0 && next.nodes().containsKey(state.selectedNode())) {
-                    next = next.addLink(state.selectedNode(), newId, next.defaultClass());
+                    next = next.addLinkContinuing(state.selectedNode(), newId);
                 }
                 RoadPlannerItem.setState(planner, state.withSelected(newId));
                 overlay(player, "curvegen.road.node_added", newId, next.nodes().size());
@@ -148,7 +148,7 @@ public final class RoadService {
                 if (next == net) { overlay(player, "curvegen.road.node_limit"); return false; }
                 int newId = next.nextId() - 1;
                 int sel = state.selectedNode();
-                if (sel >= 0 && !link.touches(sel) && next.nodes().containsKey(sel)) next = next.addLink(sel, newId, next.defaultClass());
+                if (sel >= 0 && !link.touches(sel) && next.nodes().containsKey(sel)) next = next.addLinkContinuing(sel, newId);
                 RoadPlannerItem.setState(planner, state.withSelected(newId));
                 overlay(player, "curvegen.road.node_inserted", newId, link.id());
             }
@@ -247,7 +247,7 @@ public final class RoadService {
         }
         if (sel >= 0 && net.nodes().containsKey(sel) && net.linkBetween(sel, id) == null) {
             if (!net.canEdit(player.getUUID(), operator(player))) { overlay(player, "curvegen.road.read_only"); return false; }
-            RoadNetwork next = net.addLink(sel, id, net.defaultClass());
+            RoadNetwork next = net.addLinkContinuing(sel, id);
             if (next == net) { overlay(player, "curvegen.road.link_limit"); return false; }
             all.putRemembering(net, next);
             overlay(player, "curvegen.road.linked", sel, id);

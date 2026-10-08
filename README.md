@@ -122,7 +122,9 @@ the player who created them.
    Right-clicking without a network opens it too.
 2. **Right-click** does one thing depending on what the crosshair points at (shown on the HUD and in the world):
    * ground: place a node there. With a node selected the new node is joined to it and becomes the
-     selected one, so you draw a road like a polyline. **Axis snap** (network screen, on by default) puts
+     selected one, so you draw a road like a polyline. The new road continues the road last drawn at that
+     node: same class, per-road settings and direction (a one-way road keeps flowing the same way); only a
+     node without roads uses the network's default class. **Axis snap** (network screen, on by default) puts
      the node exactly north/south or east/west of the one it joins when it is within a block of that line.
    * a node: select it; with another node selected, connect the two and continue from the clicked one;
      clicking the selected node again finishes the chain. **Hold** right-click on a node to pick it up:
